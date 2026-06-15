@@ -1240,6 +1240,36 @@ class WC_GS_Sync_Handler {
         if (isset($product_data['cross_sells'])) {
             $product->set_cross_sell_ids($this->resolve_product_ids($product_data['cross_sells']));
         }
+
+        // Tax status (taxable / shipping / none)
+        if (!empty($product_data['tax_status'])) {
+            $tax_status = strtolower(trim($product_data['tax_status']));
+            if (in_array($tax_status, array('taxable', 'shipping', 'none'), true)) {
+                $product->set_tax_status($tax_status);
+            }
+        }
+
+        // Tax class ("Standard" or empty = the standard rate, stored as '')
+        if (!empty($product_data['tax_class'])) {
+            $tax_class = trim((string) $product_data['tax_class']);
+            $product->set_tax_class(strtolower($tax_class) === 'standard' ? '' : sanitize_title($tax_class));
+        }
+
+        // Purchase note
+        if (!empty($product_data['purchase_note'])) {
+            $product->set_purchase_note($product_data['purchase_note']);
+        }
+
+        // Position (menu order)
+        if (isset($product_data['menu_order']) && $product_data['menu_order'] !== '') {
+            $product->set_menu_order(intval($product_data['menu_order']));
+        }
+
+        // Allow reviews (only when the column has an explicit value)
+        if (!empty($product_data['reviews_allowed'])) {
+            $reviews = strtolower(trim($product_data['reviews_allowed']));
+            $product->set_reviews_allowed(in_array($reviews, array('yes', 'y', '1', 'true', 'enabled', 'allow'), true));
+        }
     }
 
     /**
