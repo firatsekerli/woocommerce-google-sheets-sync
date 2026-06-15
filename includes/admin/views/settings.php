@@ -96,6 +96,24 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
                     <p class="description"><?php _e('How often to automatically sync products', 'wc-google-sheets-sync'); ?></p>
                 </td>
             </tr>
+            <tr>
+                <th scope="row"><?php _e('Reliable Scheduling', 'wc-google-sheets-sync'); ?></th>
+                <td>
+                    <p class="description">
+                        <?php _e('Automatic sync runs on WP-Cron, which is triggered by site traffic — on low-traffic stores scheduled syncs may run late. For reliable, on-time syncing, run WP-Cron from a real server cron:', 'wc-google-sheets-sync'); ?>
+                    </p>
+                    <ol class="description" style="margin-left: 1.5em;">
+                        <li>
+                            <?php _e('Add this to <code>wp-config.php</code>:', 'wc-google-sheets-sync'); ?>
+                            <br><code>define('DISABLE_WP_CRON', true);</code>
+                        </li>
+                        <li>
+                            <?php _e('Add a server cron job (for example, every 5 minutes):', 'wc-google-sheets-sync'); ?>
+                            <br><code>*/5 * * * * wget -q -O - <?php echo esc_html(site_url('wp-cron.php?doing_wp_cron')); ?> &gt;/dev/null 2&gt;&amp;1</code>
+                        </li>
+                    </ol>
+                </td>
+            </tr>
         </table>
         
         <?php submit_button(__('Save Settings', 'wc-google-sheets-sync')); ?>

@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce Google Sheets Sync
  * Plugin URI: https://ultimatesubscriptions.com/
  * Description: Sync WooCommerce products with Google Sheets for easy bulk product management and updates.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Wapiti Digital
  * Author URI: https://ultimatesubscriptions.com/
  * License: GPL v2 or later
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('WC_GS_SYNC_VERSION', '1.0.0');
+define('WC_GS_SYNC_VERSION', '1.1.0');
 define('WC_GS_SYNC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WC_GS_SYNC_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('WC_GS_SYNC_PLUGIN_BASENAME', plugin_basename(__FILE__));
