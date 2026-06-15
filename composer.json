@@ -18,6 +18,16 @@
             "WapitiDigital\\WCGoogleSheetsSync\\": "includes/"
         }
     },
+    "scripts": {
+        "pre-autoload-dump": "Google\\Task\\Composer::cleanup"
+    },
+    "extra": {
+        "google/apiclient-services": [
+            "Sheets",
+            "Drive",
+            "Oauth2"
+        ]
+    },
     "config": {
         "vendor-dir": "vendor",
         "optimize-autoloader": true,
