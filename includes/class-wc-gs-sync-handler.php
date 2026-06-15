@@ -679,6 +679,14 @@ class WC_GS_Sync_Handler {
 			$original_quantity = trim(strval($row[$quantity_index]));
 		}
 
+		// NEW: Force Update flag — when set, the sheet always wins over WooCommerce,
+		// bypassing the "recently modified in WooCommerce wins" conflict resolution.
+		$force_update = false;
+		$force_index = array_search('Force Update', $headers);
+		if ($force_index !== false && isset($row[$force_index])) {
+			$force_update = in_array(strtolower(trim(strval($row[$force_index]))), ['yes', 'y', '1', 'true', 'force']);
+		}
+
 		error_log('WC_GS_Sync: Row ' . $row_number . ' - Original SKU: ' . ($original_sku ?: 'empty') . ', Generated SKU: ' . $product_data['sku']);
 		
 		// NEW: Check if this is a delete request
@@ -751,6 +759,13 @@ class WC_GS_Sync_Handler {
 
 			// Check if product was modified AFTER last sync (indicates manual WooCommerce changes)
 			$product_recently_modified = ($product_modified > $sheet_last_synced);
+
+			// Force Update overrides conflict resolution: treat as if WooCommerce was NOT
+			// recently modified so the sheet values always win.
+			if ($force_update) {
+				$product_recently_modified = false;
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - Force Update enabled, sheet values will overwrite WooCommerce');
+			}
 
 			error_log('WC_GS_Sync: Row ' . $row_number . ' - Product modified: ' . date('Y-m-d H:i:s', $product_modified) . ', Last sync: ' . date('Y-m-d H:i:s', $sheet_last_synced) . ', Recently modified: ' . ($product_recently_modified ? 'YES' : 'NO'));
 
@@ -1056,6 +1071,9 @@ class WC_GS_Sync_Handler {
             $this->set_product_attributes($product_id, $product_data['attributes']);
         }
 
+        // Apply post visibility (public/private/password) from the Visibility column
+        $this->apply_post_visibility($product_id, $product_data);
+
         return array(
             'action' => 'created',
             'product_id' => $product_id,
@@ -1153,6 +1171,9 @@ class WC_GS_Sync_Handler {
         if (!empty($product_data['attributes'])) {
             $this->set_product_attributes($product_id, $product_data['attributes']);
         }
+
+        // Apply post visibility (public/private/password) from the Visibility column
+        $this->apply_post_visibility($product_id, $product_data);
 
         return array(
             'action' => 'updated',
@@ -1370,6 +1391,55 @@ class WC_GS_Sync_Handler {
         }
 
         return $taxonomy;
+    }
+
+    /**
+     * Apply WordPress post visibility (public / private / password) from the
+     * Visibility column. This is separate from Catalog Visibility. Runs after
+     * the product is saved so it can adjust post_status / post_password.
+     */
+    private function apply_post_visibility($product_id, $product_data) {
+        if (empty($product_data['visibility'])) {
+            return; // No Visibility value — leave the Status column in control
+        }
+
+        $visibility = strtolower(trim($product_data['visibility']));
+        $update = array('ID' => $product_id);
+
+        switch ($visibility) {
+            case 'private':
+                $update['post_status'] = 'private';
+                $update['post_password'] = '';
+                break;
+
+            case 'password':
+                $password = isset($product_data['post_password']) ? trim((string) $product_data['post_password']) : '';
+                if ($password === '') {
+                    error_log('WC_GS_Sync: Visibility "password" requested for product ' . $product_id . ' but no Password value was provided; leaving visibility unchanged');
+                    return;
+                }
+                $update['post_password'] = $password;
+                // Password-protected posts must be public, not private
+                if (get_post_status($product_id) === 'private') {
+                    $update['post_status'] = 'publish';
+                }
+                break;
+
+            case 'public':
+            default:
+                $update['post_password'] = '';
+                // If the product was previously private, restore it to public
+                if (get_post_status($product_id) === 'private') {
+                    $update['post_status'] = 'publish';
+                }
+                break;
+        }
+
+        // Only write if there is something to change beyond the ID
+        if (count($update) > 1) {
+            wp_update_post($update);
+            error_log('WC_GS_Sync: Applied post visibility "' . $visibility . '" to product ' . $product_id);
+        }
     }
 
     /**

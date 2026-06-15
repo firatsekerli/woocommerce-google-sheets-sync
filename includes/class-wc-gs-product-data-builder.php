@@ -30,7 +30,7 @@ class WC_GS_Product_Data_Builder {
             return ($value === null || $value === '' || $value === 0);
         };
 
-        // === VISIBILITY VALIDATION ===
+        // === CATALOG VISIBILITY VALIDATION (visible / catalog / search / hidden) ===
         $validate_visibility = function($visibility) {
             if (!$visibility || trim($visibility) === '') {
                 return null; // Return null to omit from update
@@ -38,6 +38,16 @@ class WC_GS_Product_Data_Builder {
             $valid_values = ['visible', 'catalog', 'search', 'hidden'];
             $normalized_value = strtolower($visibility);
             return in_array($normalized_value, $valid_values) ? $normalized_value : 'visible';
+        };
+
+        // === POST VISIBILITY VALIDATION (public / private / password) ===
+        $validate_post_visibility = function($visibility) {
+            if (!$visibility || trim($visibility) === '') {
+                return null; // Return null to leave the Status column in control
+            }
+            $valid_values = ['public', 'private', 'password'];
+            $normalized_value = strtolower(trim($visibility));
+            return in_array($normalized_value, $valid_values) ? $normalized_value : null;
         };
 
         // === CATEGORIES HANDLING ===
@@ -87,7 +97,9 @@ class WC_GS_Product_Data_Builder {
             'short_description' => $get("Short Description"),
             'type' => strtolower($get("Type", "simple")),
             'status' => strtolower($get("Status", "publish")),
-            'catalog_visibility' => $validate_visibility($get("Visibility")),
+            'catalog_visibility' => $validate_visibility($get("Catalog Visibility")),
+            'visibility' => $validate_post_visibility($get("Visibility")),
+            'post_password' => $get("Password"),
             'featured' => in_array(strtolower($get("Featured")), ['true', 'yes', '1']),
             'regular_price' => $get("Regular Price"),
             'sale_price' => $is_empty("Sale Price") ? "" : $get("Sale Price"),
