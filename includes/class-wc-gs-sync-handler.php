@@ -1050,7 +1050,12 @@ class WC_GS_Sync_Handler {
         if (!empty($product_data['images'])) {
             $this->handle_product_images($product_id, $product_data);
         }
-        
+
+        // Handle global product attributes (for filtering)
+        if (!empty($product_data['attributes'])) {
+            $this->set_product_attributes($product_id, $product_data['attributes']);
+        }
+
         return array(
             'action' => 'created',
             'product_id' => $product_id,
@@ -1143,7 +1148,12 @@ class WC_GS_Sync_Handler {
         if (!empty($product_data['images'])) {
             $this->handle_product_images($product_id, $product_data);
         }
-        
+
+        // Handle global product attributes (for filtering)
+        if (!empty($product_data['attributes'])) {
+            $this->set_product_attributes($product_id, $product_data['attributes']);
+        }
+
         return array(
             'action' => 'updated',
             'product_id' => $product_id,
@@ -1197,6 +1207,169 @@ class WC_GS_Sync_Handler {
         if (!empty($product_data['shipping_class'])) {
             $product->set_shipping_class($product_data['shipping_class']);
         }
+
+        // Upsells / Cross-sells (referenced by product ID or SKU; sheet is authoritative)
+        if (isset($product_data['upsells'])) {
+            $product->set_upsell_ids($this->resolve_product_ids($product_data['upsells']));
+        }
+        if (isset($product_data['cross_sells'])) {
+            $product->set_cross_sell_ids($this->resolve_product_ids($product_data['cross_sells']));
+        }
+    }
+
+    /**
+     * Resolve a comma/semicolon/pipe-separated list of product references
+     * (numeric IDs or SKUs) into an array of valid product IDs.
+     */
+    private function resolve_product_ids($value) {
+        $tokens = is_array($value) ? $value : preg_split('/[,;|]/', (string) $value);
+
+        $ids = array();
+        foreach ($tokens as $token) {
+            $token = trim($token);
+            if ($token === '') {
+                continue;
+            }
+
+            // Numeric token: treat as a product ID if it resolves to a product
+            if (ctype_digit($token) && wc_get_product((int) $token)) {
+                $ids[] = (int) $token;
+                continue;
+            }
+
+            // Otherwise treat as a SKU
+            $by_sku = wc_get_product_id_by_sku($token);
+            if ($by_sku) {
+                $ids[] = (int) $by_sku;
+            } else {
+                error_log('WC_GS_Sync: Upsell/Cross-sell reference not found: "' . $token . '"');
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Apply global product attributes (used for filtering / layered nav).
+     *
+     * Creates the global attribute taxonomy and terms if needed, assigns the
+     * terms to the product, and stores them as the product's attributes.
+     */
+    private function set_product_attributes($product_id, $attributes_data) {
+        if (empty($attributes_data) || !is_array($attributes_data)) {
+            return;
+        }
+
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            return;
+        }
+
+        $product_attributes = array();
+        $position = 0;
+
+        foreach ($attributes_data as $attribute) {
+            $name = isset($attribute['name']) ? trim($attribute['name']) : '';
+            $values = isset($attribute['values']) ? (array) $attribute['values'] : array();
+            if ($name === '' || empty($values)) {
+                continue;
+            }
+
+            // Ensure the global attribute taxonomy exists and is registered
+            $taxonomy = $this->get_or_create_global_attribute($name);
+            if (!$taxonomy) {
+                continue;
+            }
+
+            // Ensure each term exists and collect the term IDs
+            $term_ids = array();
+            foreach ($values as $value) {
+                $value = trim($value);
+                if ($value === '') {
+                    continue;
+                }
+
+                $term = get_term_by('name', $value, $taxonomy);
+                if (!$term) {
+                    $inserted = wp_insert_term($value, $taxonomy);
+                    if (is_wp_error($inserted)) {
+                        error_log('WC_GS_Sync: Failed to create attribute term "' . $value . '" in ' . $taxonomy . ': ' . $inserted->get_error_message());
+                        continue;
+                    }
+                    $term_ids[] = (int) $inserted['term_id'];
+                } else {
+                    $term_ids[] = (int) $term->term_id;
+                }
+            }
+
+            if (empty($term_ids)) {
+                continue;
+            }
+
+            // Assign the terms to the product — this is what powers attribute filtering
+            wp_set_object_terms($product_id, $term_ids, $taxonomy, false);
+
+            // Build the product attribute object
+            $wc_attribute = new WC_Product_Attribute();
+            $wc_attribute->set_id(wc_attribute_taxonomy_id_by_name($taxonomy));
+            $wc_attribute->set_name($taxonomy);
+            $wc_attribute->set_options($term_ids);
+            $wc_attribute->set_position($position++);
+            $wc_attribute->set_visible(true);
+            $wc_attribute->set_variation(false);
+
+            $product_attributes[] = $wc_attribute;
+        }
+
+        if (!empty($product_attributes)) {
+            $product->set_attributes($product_attributes);
+            $product->save();
+        }
+    }
+
+    /**
+     * Get a global attribute taxonomy name, creating the attribute if needed.
+     * Returns the taxonomy (e.g. "pa_color") or false on failure.
+     */
+    private function get_or_create_global_attribute($name) {
+        $slug = wc_sanitize_taxonomy_name($name);
+        if ($slug === '') {
+            return false;
+        }
+
+        $taxonomy = wc_attribute_taxonomy_name($slug);
+
+        // Create the attribute in WooCommerce's attribute table if it doesn't exist
+        if (!wc_attribute_taxonomy_id_by_name($slug)) {
+            $attribute_id = wc_create_attribute(array(
+                'name'         => $name,
+                'slug'         => $slug,
+                'type'         => 'select',
+                'order_by'     => 'menu_order',
+                'has_archives' => true,
+            ));
+
+            if (is_wp_error($attribute_id)) {
+                error_log('WC_GS_Sync: Failed to create global attribute "' . $name . '": ' . $attribute_id->get_error_message());
+                return false;
+            }
+        }
+
+        // Register the taxonomy for this request so terms can be added immediately
+        if (!taxonomy_exists($taxonomy)) {
+            register_taxonomy(
+                $taxonomy,
+                apply_filters('woocommerce_taxonomy_objects_' . $taxonomy, array('product')),
+                apply_filters('woocommerce_taxonomy_args_' . $taxonomy, array(
+                    'hierarchical' => true,
+                    'show_ui'      => false,
+                    'query_var'    => true,
+                    'rewrite'      => false,
+                ))
+            );
+        }
+
+        return $taxonomy;
     }
 
     /**

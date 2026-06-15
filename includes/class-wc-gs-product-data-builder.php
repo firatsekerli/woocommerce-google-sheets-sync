@@ -105,6 +105,9 @@ class WC_GS_Product_Data_Builder {
             ),
             'categories' => $categories,
             'tags' => $tags,
+            'upsells' => $get("Upsells"),
+            'cross_sells' => $get("Cross-sells"),
+            'attributes' => $this->build_attributes($row, $headers),
             'delete' => $get("Delete")
         );
 
@@ -169,6 +172,51 @@ class WC_GS_Product_Data_Builder {
         // IMPORTANT: Always return the images array (even if empty) 
         // so the sync handler knows to remove existing images when sheet is empty
         return $images;
+    }
+
+    /**
+     * Build product attributes from the sheet.
+     *
+     * The "Attributes" column acts as a section marker: every column to its
+     * right is treated as an individual product attribute, where the header is
+     * the attribute name and the cell holds its value(s) (comma/semicolon/pipe
+     * separated). These are applied as global attributes for filtering.
+     */
+    private function build_attributes($row, $headers) {
+        $attributes = array();
+
+        $start = array_search('Attributes', $headers);
+        if ($start === false) {
+            return $attributes;
+        }
+
+        $count = count($headers);
+        for ($i = $start + 1; $i < $count; $i++) {
+            $name = isset($headers[$i]) ? trim($headers[$i]) : '';
+            if ($name === '') {
+                continue;
+            }
+
+            $raw = isset($row[$i]) ? trim(strval($row[$i])) : '';
+            if ($raw === '') {
+                continue;
+            }
+
+            $values = array_values(array_filter(array_map('trim', preg_split('/[,;|]/', $raw)), function ($v) {
+                return $v !== '';
+            }));
+
+            if (empty($values)) {
+                continue;
+            }
+
+            $attributes[] = array(
+                'name'   => $name,
+                'values' => $values,
+            );
+        }
+
+        return $attributes;
     }
 
     /**
