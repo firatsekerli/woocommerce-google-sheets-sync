@@ -32,28 +32,18 @@ class WC_GS_Settings {
      */
     public function save_settings() {
         // Check nonce
-        if (!wp_verify_nonce($_POST['_wpnonce'], 'wc_gs_sync_settings_nonce')) {
+        $nonce = isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '';
+        if (!wp_verify_nonce($nonce, 'wc_gs_sync_settings_nonce')) {
             wp_die(__('Security check failed', 'wc-google-sheets-sync'));
         }
-        
+
         // Check permissions
         if (!current_user_can('manage_woocommerce')) {
             wp_die(__('Insufficient permissions', 'wc-google-sheets-sync'));
         }
-        
-        // Get current options
-        $options = $this->get_options();
-        
-        // Update options
-        $options['google_client_id'] = sanitize_text_field($_POST['google_client_id']);
-        $options['google_client_secret'] = sanitize_text_field($_POST['google_client_secret']);
-        $options['batch_size'] = intval($_POST['batch_size']);
-        $options['rate_limit_delay'] = intval($_POST['rate_limit_delay']);
-        $options['max_retries'] = intval($_POST['max_retries']);
-        $options['auto_sync_enabled'] = isset($_POST['auto_sync_enabled']);
-        $options['auto_sync_interval'] = sanitize_text_field($_POST['auto_sync_interval']);
-        
-        // Save options
+
+        // Sanitize and persist (reuses the same validation as the Settings API path)
+        $options = $this->validate_settings($_POST);
         update_option('wc_gs_sync_options', $options);
         
         // Redirect back with success message
