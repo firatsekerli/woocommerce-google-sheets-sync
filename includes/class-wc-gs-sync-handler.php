@@ -36,6 +36,14 @@ class WC_GS_Sync_Handler {
         }
         return $this->google_api;
     }
+
+    /**
+     * Read a plugin setting from wc_gs_sync_options with a fallback default.
+     */
+    private function get_setting($key, $default = null) {
+        $options = get_option('wc_gs_sync_options', array());
+        return isset($options[$key]) ? $options[$key] : $default;
+    }
     
     /**
      * NEW: Find column indices for write-back fields
@@ -176,6 +184,14 @@ class WC_GS_Sync_Handler {
      */
     private function sync_sheet_to_woocommerce($sync_id, $sheet_config) {
         try {
+            // Give long-running syncs room to complete. The sync runs inline within the
+            // AJAX request, so large sheets (plus image downloads) can otherwise hit the
+            // PHP execution-time or memory limit.
+            @set_time_limit(0);
+            if (function_exists('wp_raise_memory_limit')) {
+                wp_raise_memory_limit('admin');
+            }
+
             // Update progress: Reading sheet data
             $this->update_sync_progress($sync_id, array(
                 'status' => 'reading',
@@ -524,15 +540,49 @@ class WC_GS_Sync_Handler {
             }
             
             error_log('WC_GS_Sync: Prepared ' . count($updates) . ' total updates for batch write');
-            
-            // Write back to sheet
-            $result = $google_api->batch_update_sheet($sheet_config['sheet_id'], $updates);
-            
-            if (is_wp_error($result)) {
-                error_log('WC_GS_Sync: Failed to write back data: ' . $result->get_error_message());
+
+            // Write back to sheet in batches, honoring the configured throttle settings:
+            // batch_size = number of cell ranges per request, rate_limit_delay = pause
+            // between requests (ms), max_retries = attempts per failed batch.
+            $batch_size = max(1, (int) $this->get_setting('batch_size', 10));
+            $delay_ms = max(0, (int) $this->get_setting('rate_limit_delay', 1000));
+            $max_retries = max(1, (int) $this->get_setting('max_retries', 3));
+
+            $chunks = array_chunk($updates, $batch_size);
+            $written = 0;
+            $had_error = false;
+
+            foreach ($chunks as $chunk_index => $chunk) {
+                $write_result = null;
+                for ($attempt = 1; $attempt <= $max_retries; $attempt++) {
+                    $write_result = $google_api->batch_update_sheet($sheet_config['sheet_id'], $chunk);
+                    if (!is_wp_error($write_result)) {
+                        break;
+                    }
+                    error_log('WC_GS_Sync: Write-back batch ' . ($chunk_index + 1) . ' attempt ' . $attempt . ' of ' . $max_retries . ' failed: ' . $write_result->get_error_message());
+                    if ($attempt < $max_retries && $delay_ms > 0) {
+                        usleep($delay_ms * 1000);
+                    }
+                }
+
+                if (is_wp_error($write_result)) {
+                    $had_error = true;
+                    error_log('WC_GS_Sync: Failed to write back batch ' . ($chunk_index + 1) . ': ' . $write_result->get_error_message());
+                } else {
+                    $written += count($chunk);
+                }
+
+                // Pause between batches to respect the rate limit
+                if ($delay_ms > 0 && $chunk_index < count($chunks) - 1) {
+                    usleep($delay_ms * 1000);
+                }
+            }
+
+            if ($had_error) {
+                error_log('WC_GS_Sync: Write-back completed with errors; ' . $written . ' of ' . count($updates) . ' updates written');
             } else {
-                error_log('WC_GS_Sync: Successfully wrote back ' . count($updates) . ' updates including SKUs');
-                
+                error_log('WC_GS_Sync: Successfully wrote back ' . $written . ' updates including SKUs');
+
                 // Update progress to show write-back completion
                 $this->update_sync_progress($sync_id, array(
                     'current_step' => 'Sync completed! All data written back to sheet.'
@@ -556,8 +606,24 @@ class WC_GS_Sync_Handler {
         
         // Get data from specified range (A1:ZZ1000 to get plenty of data)
         $range = $sheet_config['sheet_tab'] . '!A1:ZZ1000';
-        
-        return $google_api->get_sheet_data($sheet_config['sheet_id'], $range);
+
+        // Retry transient API failures using the configured settings.
+        $max_retries = max(1, (int) $this->get_setting('max_retries', 3));
+        $delay_ms = max(0, (int) $this->get_setting('rate_limit_delay', 1000));
+
+        $result = null;
+        for ($attempt = 1; $attempt <= $max_retries; $attempt++) {
+            $result = $google_api->get_sheet_data($sheet_config['sheet_id'], $range);
+            if (!is_wp_error($result)) {
+                break;
+            }
+            error_log('WC_GS_Sync: Sheet read attempt ' . $attempt . ' of ' . $max_retries . ' failed: ' . $result->get_error_message());
+            if ($attempt < $max_retries && $delay_ms > 0) {
+                usleep($delay_ms * 1000);
+            }
+        }
+
+        return $result;
     }
     
     /**
