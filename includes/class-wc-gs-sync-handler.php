@@ -1224,9 +1224,13 @@ class WC_GS_Sync_Handler {
             $product->set_height($product_data['dimensions']['height']);
         }
 
-        // Shipping class
+        // Shipping class (the data builder returns a slug; WC_Product only has
+        // set_shipping_class_id(), so resolve the slug to its term ID)
         if (!empty($product_data['shipping_class'])) {
-            $product->set_shipping_class($product_data['shipping_class']);
+            $shipping_term = get_term_by('slug', $product_data['shipping_class'], 'product_shipping_class');
+            if ($shipping_term && !is_wp_error($shipping_term)) {
+                $product->set_shipping_class_id($shipping_term->term_id);
+            }
         }
 
         // Upsells / Cross-sells (referenced by product ID or SKU; sheet is authoritative)
