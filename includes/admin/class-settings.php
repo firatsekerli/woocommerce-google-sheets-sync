@@ -89,17 +89,35 @@ class WC_GS_Settings {
     }
     
     /**
-     * Render settings page
-     */
-    public function render_settings_page() {
-        // TODO: Include settings template
-    }
-    
-    /**
-     * Validate settings
+     * Validate and sanitize settings input (used by register_setting()).
      */
     public function validate_settings($input) {
-        // TODO: Validate and sanitize settings input
-        return $input;
+        $output = $this->get_options();
+
+        if (!is_array($input)) {
+            return $output;
+        }
+
+        if (isset($input['google_client_id'])) {
+            $output['google_client_id'] = sanitize_text_field($input['google_client_id']);
+        }
+        if (isset($input['google_client_secret'])) {
+            $output['google_client_secret'] = sanitize_text_field($input['google_client_secret']);
+        }
+        if (isset($input['batch_size'])) {
+            $output['batch_size'] = max(1, intval($input['batch_size']));
+        }
+        if (isset($input['rate_limit_delay'])) {
+            $output['rate_limit_delay'] = max(0, intval($input['rate_limit_delay']));
+        }
+        if (isset($input['max_retries'])) {
+            $output['max_retries'] = max(1, intval($input['max_retries']));
+        }
+        $output['auto_sync_enabled'] = !empty($input['auto_sync_enabled']);
+        if (isset($input['auto_sync_interval'])) {
+            $output['auto_sync_interval'] = sanitize_text_field($input['auto_sync_interval']);
+        }
+
+        return $output;
     }
 }

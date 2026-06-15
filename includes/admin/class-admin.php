@@ -18,8 +18,6 @@ class WC_GS_Admin {
     public function __construct() {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
-        add_action('wp_ajax_wc_gs_sync_start', array($this, 'ajax_start_sync'));
-        add_action('wp_ajax_wc_gs_sync_status', array($this, 'ajax_get_sync_status'));
         add_action('admin_init', array($this, 'handle_oauth_callback'));
         
         // Initialize settings
@@ -192,29 +190,5 @@ class WC_GS_Admin {
     public function settings_page() {
         // Load the settings template
         include WC_GS_SYNC_PLUGIN_PATH . 'includes/admin/views/settings.php';
-    }
-    
-    /**
-     * AJAX start sync
-     */
-    public function ajax_start_sync() {
-        check_ajax_referer('wc_gs_sync_nonce', 'nonce');
-        
-        if (!current_user_can('manage_woocommerce')) {
-            wp_die(__('Insufficient permissions', 'wc-google-sheets-sync'));
-        }
-        
-        // TODO: Start sync process via AJAX
-        wp_send_json_success();
-    }
-    
-    /**
-     * AJAX get sync status
-     */
-    public function ajax_get_sync_status() {
-        check_ajax_referer('wc_gs_sync_nonce', 'nonce');
-        
-        // TODO: Get sync status via AJAX
-        wp_send_json_success();
     }
 }
