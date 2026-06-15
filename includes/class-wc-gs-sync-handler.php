@@ -590,7 +590,14 @@ class WC_GS_Sync_Handler {
 				if ($original_gtin) break;
 			}
 		}
-    
+
+		// NEW: Get original Quantity from sheet (used by the quantity write-back logic below)
+		$original_quantity = '';
+		$quantity_index = array_search('Quantity', $headers);
+		if ($quantity_index !== false && isset($row[$quantity_index])) {
+			$original_quantity = trim(strval($row[$quantity_index]));
+		}
+
 		error_log('WC_GS_Sync: Row ' . $row_number . ' - Original SKU: ' . ($original_sku ?: 'empty') . ', Generated SKU: ' . $product_data['sku']);
 		
 		// NEW: Check if this is a delete request
@@ -937,7 +944,10 @@ class WC_GS_Sync_Handler {
             $product->set_stock_quantity(intval($product_data['stock_quantity']));
             $product->set_manage_stock(true);
         }
-        
+
+        // Apply additional attributes from the sheet
+        $this->apply_additional_product_fields($product, $product_data);
+
         // Set status
         $status = !empty($product_data['status']) ? $product_data['status'] : 'publish';
         $product->set_status($status);
@@ -1024,7 +1034,10 @@ class WC_GS_Sync_Handler {
             $product->set_stock_quantity(intval($product_data['stock_quantity']));
             $product->set_manage_stock(true);
         }
-        
+
+        // Apply additional attributes from the sheet
+        $this->apply_additional_product_fields($product, $product_data);
+
         // Set status
         if (!empty($product_data['status'])) {
             $product->set_status($product_data['status']);
@@ -1056,7 +1069,55 @@ class WC_GS_Sync_Handler {
             'missing_id' => false // NEW: Will be set to true in process_product_row if ID was missing
         );
     }
-    
+
+    /**
+     * Apply additional product attributes parsed from the sheet that aren't
+     * handled by the basic setters above (featured, visibility, sale schedule,
+     * sold individually, dimensions, shipping class).
+     *
+     * Shared by create_product() and update_product().
+     */
+    private function apply_additional_product_fields($product, $product_data) {
+        // Featured flag (sheet is the source of truth)
+        if (isset($product_data['featured'])) {
+            $product->set_featured((bool) $product_data['featured']);
+        }
+
+        // Sold individually
+        if (isset($product_data['sold_individually'])) {
+            $product->set_sold_individually((bool) $product_data['sold_individually']);
+        }
+
+        // Catalog visibility (data builder returns null to intentionally skip)
+        if (!empty($product_data['catalog_visibility'])) {
+            $product->set_catalog_visibility($product_data['catalog_visibility']);
+        }
+
+        // Sale schedule dates (empty string clears the date)
+        if (isset($product_data['date_on_sale_from'])) {
+            $product->set_date_on_sale_from($product_data['date_on_sale_from'] !== '' ? $product_data['date_on_sale_from'] : null);
+        }
+        if (isset($product_data['date_on_sale_to'])) {
+            $product->set_date_on_sale_to($product_data['date_on_sale_to'] !== '' ? $product_data['date_on_sale_to'] : null);
+        }
+
+        // Dimensions
+        if (!empty($product_data['dimensions']['length'])) {
+            $product->set_length($product_data['dimensions']['length']);
+        }
+        if (!empty($product_data['dimensions']['width'])) {
+            $product->set_width($product_data['dimensions']['width']);
+        }
+        if (!empty($product_data['dimensions']['height'])) {
+            $product->set_height($product_data['dimensions']['height']);
+        }
+
+        // Shipping class
+        if (!empty($product_data['shipping_class'])) {
+            $product->set_shipping_class($product_data['shipping_class']);
+        }
+    }
+
     /**
      * Set product categories
      * FIXED: Handle both string and array inputs
@@ -1306,6 +1367,3 @@ class WC_GS_Sync_Handler {
         return $attachment_id;
     }
 }
-
-// Initialize the sync handler
-new WC_GS_Sync_Handler();

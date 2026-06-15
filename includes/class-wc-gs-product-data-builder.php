@@ -436,8 +436,8 @@ class WC_GS_Product_Data_Builder {
 		
 		// Validate Low Stock Threshold
 		if (!empty($product_data['low_stock_amount'])) {
-			// Check if stock management is enabled
-			if (empty($product_data['manage_stock']) || $product_data['manage_stock'] !== 'yes') {
+			// Check if stock management is enabled (manage_stock is a boolean)
+			if (empty($product_data['manage_stock'])) {
 				$errors[] = "You cannot set Low Stock Threshold if Stock Management is not enabled";
 			}
 		}
