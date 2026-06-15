@@ -290,6 +290,28 @@ class WC_GS_Google_Sheets_API {
     }
     
     /**
+     * NEW: Clear a range of values in a Google Sheet
+     */
+    public function clear_values($sheet_id, $range) {
+        if (!$this->is_authenticated()) {
+            return new WP_Error('not_authenticated', 'Not authenticated with Google');
+        }
+
+        try {
+            if (!$this->service) {
+                $this->service = new Google_Service_Sheets($this->client);
+            }
+
+            $clear_request = new Google_Service_Sheets_ClearValuesRequest();
+            $result = $this->service->spreadsheets_values->clear($sheet_id, $range, $clear_request);
+            return $result;
+
+        } catch (Exception $e) {
+            return new WP_Error('api_error', $e->getMessage());
+        }
+    }
+
+    /**
      * Get sheet info
      */
     public function get_sheet_info($sheet_id) {

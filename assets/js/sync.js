@@ -9,17 +9,59 @@ jQuery(document).ready(function($) {
     // Handle sync button clicks
     $('.wc-gs-sync-sheet').on('click', function(e) {
         e.preventDefault();
-        
+
         var button = $(this);
         var sheetId = button.data('sheet-id');
-        
+
         if (!sheetId) {
             alert('Invalid sheet ID');
             return;
         }
-        
+
         // Start sync
         startSync(sheetId, button);
+    });
+
+    // Handle "Export Products to Sheet" button clicks
+    $('.wc-gs-export-sheet').on('click', function(e) {
+        e.preventDefault();
+
+        var button = $(this);
+        var sheetId = button.data('sheet-id');
+
+        if (!sheetId) {
+            alert('Invalid sheet ID');
+            return;
+        }
+
+        if (!confirm('This will overwrite the sheet\'s data rows with all current WooCommerce products. The header row is kept. Continue?')) {
+            return;
+        }
+
+        var originalText = button.text();
+        button.prop('disabled', true).text('Exporting...');
+
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'wc_gs_export_to_sheet',
+                sheet_id: sheetId,
+                nonce: wc_gs_sync_nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert((response.data && response.data.message) ? response.data.message : 'Export complete.');
+                } else {
+                    alert('Export failed: ' + (response.data || 'Unknown error'));
+                }
+                button.prop('disabled', false).text(originalText);
+            },
+            error: function() {
+                alert('Export failed. Please try again.');
+                button.prop('disabled', false).text(originalText);
+            }
+        });
     });
     
     /**

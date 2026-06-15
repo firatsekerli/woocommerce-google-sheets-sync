@@ -190,9 +190,13 @@ if (isset($_GET['sheet_removed'])) {
                             </div>
                             
                             <div class="wc-gs-sheet-sync-actions">
-                                <button type="button" class="button button-primary button-small wc-gs-sync-sheet" 
+                                <button type="button" class="button button-primary button-small wc-gs-sync-sheet"
                                         data-sheet-id="<?php echo esc_attr($sheet_id); ?>">
                                     <?php _e('Sync Now', 'wc-google-sheets-sync'); ?>
+                                </button>
+                                <button type="button" class="button button-secondary button-small wc-gs-export-sheet"
+                                        data-sheet-id="<?php echo esc_attr($sheet_id); ?>">
+                                    <?php _e('Export Products to Sheet', 'wc-google-sheets-sync'); ?>
                                 </button>
                             </div>
                         </div>

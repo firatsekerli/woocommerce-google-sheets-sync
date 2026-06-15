@@ -1,0 +1,236 @@
+<?php
+/**
+ * Product Exporter — builds a Google Sheets row from a WooCommerce product.
+ *
+ * This is the reverse of WC_GS_Product_Data_Builder: given the sheet's header
+ * row, it produces a row of values aligned to those headers so existing
+ * WooCommerce products can be written back into the sheet.
+ *
+ * @package WC_Google_Sheets_Sync
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class WC_GS_Product_Exporter {
+
+    /**
+     * Build a single row for a product, aligned to the sheet headers.
+     */
+    public function build_row($product, $headers) {
+        $row = array();
+
+        // Columns to the right of the "Attributes" marker are global attributes
+        $attr_start = array_search('Attributes', $headers);
+
+        foreach ($headers as $index => $header) {
+            $header = trim($header);
+
+            if ($header === 'Attributes') {
+                $row[] = '';
+                continue;
+            }
+
+            if ($attr_start !== false && $index > $attr_start) {
+                $row[] = $this->get_attribute_value($product, $header);
+                continue;
+            }
+
+            $row[] = $this->get_field_value($product, $header);
+        }
+
+        return $row;
+    }
+
+    /**
+     * Map a known field header to the product's value.
+     */
+    private function get_field_value($product, $header) {
+        switch ($header) {
+            case 'ID': return $product->get_id();
+            case 'SKU': return $product->get_sku();
+            case 'GTIN, UPC, EAN, or ISBN': return $product->get_meta('_global_unique_id');
+            case 'Stock Management': return $product->get_manage_stock() ? 'yes' : 'no';
+            case 'Quantity':
+                $qty = $product->get_stock_quantity();
+                return ($qty === null) ? '' : $qty;
+            case 'Stock Status': return $product->get_stock_status();
+            case 'Backorder': return $product->get_backorders();
+            case 'Low Stock Threshold':
+                $low = $product->get_low_stock_amount();
+                return ($low === '' || $low === null) ? '' : $low;
+            case 'Sold Individually': return $product->get_sold_individually() ? 'yes' : 'no';
+            case 'Name': return $product->get_name();
+            case 'Description': return $product->get_description();
+            case 'Short Description': return $product->get_short_description();
+            case 'Type': return $product->get_type();
+            case 'Status': return $product->get_status();
+            case 'Visibility': return $this->get_post_visibility($product);
+            case 'Catalog Visibility': return $product->get_catalog_visibility();
+            case 'Password': return get_post_field('post_password', $product->get_id());
+            case 'Featured': return $product->get_featured() ? 'yes' : 'no';
+            case 'Regular Price': return $product->get_regular_price();
+            case 'Sale Price': return $product->get_sale_price();
+            case 'Sale Start Date': return $this->format_date($product->get_date_on_sale_from());
+            case 'Sale End Date': return $this->format_date($product->get_date_on_sale_to());
+            case 'Tax Status': return $product->get_tax_status();
+            case 'Tax Class':
+                $tax_class = $product->get_tax_class();
+                return ($tax_class === '') ? 'Standard' : $tax_class;
+            case 'Purchase Note': return $product->get_purchase_note();
+            case 'Position': return $product->get_menu_order();
+            case 'Allow Reviews': return $product->get_reviews_allowed() ? 'yes' : 'no';
+            case 'Weight': return $product->get_weight();
+            case 'Dimension (L)': return $product->get_length();
+            case 'Dimension (W)': return $product->get_width();
+            case 'Dimension (H)': return $product->get_height();
+            case 'Shipping Class': return $this->get_shipping_class_name($product);
+            case 'Upsells': return implode(', ', $product->get_upsell_ids());
+            case 'Cross-sells': return implode(', ', $product->get_cross_sell_ids());
+            case 'Category Path': return $this->get_category_path($product);
+            case 'Tags': return $this->get_terms_list($product->get_tag_ids(), 'product_tag');
+            case 'Image': return $this->get_image_url($product->get_image_id());
+            case 'Image Alt Text': return $this->get_image_alt($product->get_image_id());
+
+            // Sync / control columns are intentionally left blank on export
+            case 'Sync Status':
+            case 'Sync Error':
+            case 'Last Synced':
+            case 'Force Update':
+            case 'Delete':
+                return '';
+        }
+
+        // Gallery image alt text (check before the plain gallery pattern)
+        if (preg_match('/^Gallery Image (\d+) Alt Text$/', $header, $m)) {
+            $gallery = $product->get_gallery_image_ids();
+            $pos = intval($m[1]) - 1;
+            return isset($gallery[$pos]) ? $this->get_image_alt($gallery[$pos]) : '';
+        }
+
+        // Gallery image URL
+        if (preg_match('/^Gallery Image (\d+)$/', $header, $m)) {
+            $gallery = $product->get_gallery_image_ids();
+            $pos = intval($m[1]) - 1;
+            return isset($gallery[$pos]) ? $this->get_image_url($gallery[$pos]) : '';
+        }
+
+        return ''; // Unknown header
+    }
+
+    /**
+     * Get a product's terms for a global attribute identified by its header.
+     */
+    private function get_attribute_value($product, $header) {
+        if ($header === '') {
+            return '';
+        }
+
+        $taxonomy = wc_attribute_taxonomy_name(wc_sanitize_taxonomy_name($header));
+        if (!taxonomy_exists($taxonomy)) {
+            return '';
+        }
+
+        $terms = wp_get_post_terms($product->get_id(), $taxonomy, array('fields' => 'names'));
+        if (is_wp_error($terms) || empty($terms)) {
+            return '';
+        }
+
+        return implode(', ', $terms);
+    }
+
+    /**
+     * Derive WordPress post visibility (public / private / password).
+     */
+    private function get_post_visibility($product) {
+        if ($product->get_status() === 'private') {
+            return 'private';
+        }
+        $password = get_post_field('post_password', $product->get_id());
+        if ($password !== '') {
+            return 'password';
+        }
+        return 'public';
+    }
+
+    /**
+     * Format a WC_DateTime (or null) as Y-m-d.
+     */
+    private function format_date($date) {
+        return $date ? $date->date('Y-m-d') : '';
+    }
+
+    /**
+     * Resolve the product's shipping class term name.
+     */
+    private function get_shipping_class_name($product) {
+        $class_id = $product->get_shipping_class_id();
+        if (!$class_id) {
+            return '';
+        }
+        $term = get_term($class_id, 'product_shipping_class');
+        return ($term && !is_wp_error($term)) ? $term->name : '';
+    }
+
+    /**
+     * Build a hierarchical "Parent > Child" path for the product's first category.
+     */
+    private function get_category_path($product) {
+        $category_ids = $product->get_category_ids();
+        if (empty($category_ids)) {
+            return '';
+        }
+
+        $term_id = $category_ids[0];
+        $names = array();
+
+        $ancestors = array_reverse(get_ancestors($term_id, 'product_cat'));
+        foreach ($ancestors as $ancestor_id) {
+            $term = get_term($ancestor_id, 'product_cat');
+            if ($term && !is_wp_error($term)) {
+                $names[] = $term->name;
+            }
+        }
+
+        $term = get_term($term_id, 'product_cat');
+        if ($term && !is_wp_error($term)) {
+            $names[] = $term->name;
+        }
+
+        return implode(' > ', $names);
+    }
+
+    /**
+     * Comma-separated term names for a list of term IDs.
+     */
+    private function get_terms_list($term_ids, $taxonomy) {
+        if (empty($term_ids)) {
+            return '';
+        }
+        $names = array();
+        foreach ($term_ids as $term_id) {
+            $term = get_term($term_id, $taxonomy);
+            if ($term && !is_wp_error($term)) {
+                $names[] = $term->name;
+            }
+        }
+        return implode(', ', $names);
+    }
+
+    private function get_image_url($attachment_id) {
+        if (!$attachment_id) {
+            return '';
+        }
+        $url = wp_get_attachment_url($attachment_id);
+        return $url ? $url : '';
+    }
+
+    private function get_image_alt($attachment_id) {
+        if (!$attachment_id) {
+            return '';
+        }
+        return (string) get_post_meta($attachment_id, '_wp_attachment_image_alt', true);
+    }
+}

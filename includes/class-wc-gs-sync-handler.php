@@ -17,10 +17,17 @@ class WC_GS_Sync_Handler {
     public function __construct() {
         // Don't initialize Google API in constructor to avoid dependency issues
         $this->google_api = null;
-        
+
         // Register AJAX handlers
         add_action('wp_ajax_wc_gs_sync_sheet', array($this, 'handle_sync_request'));
         add_action('wp_ajax_wc_gs_get_sync_progress', array($this, 'get_sync_progress'));
+        add_action('wp_ajax_wc_gs_export_to_sheet', array($this, 'handle_export_request'));
+
+        // Scheduled (auto) sync via WP-Cron
+        add_filter('cron_schedules', array($this, 'add_cron_schedules'));
+        add_action('wc_gs_sync_scheduled_import', array($this, 'run_scheduled_sync'));
+        add_action('update_option_wc_gs_sync_options', array($this, 'update_sync_schedule'), 10, 0);
+        add_action('add_option_wc_gs_sync_options', array($this, 'update_sync_schedule'), 10, 0);
     }
     
     /**
@@ -43,6 +50,207 @@ class WC_GS_Sync_Handler {
     private function get_setting($key, $default = null) {
         $options = get_option('wc_gs_sync_options', array());
         return isset($options[$key]) ? $options[$key] : $default;
+    }
+
+    /**
+     * Register a 'weekly' cron schedule (hourly/twicedaily/daily are built in).
+     */
+    public function add_cron_schedules($schedules) {
+        if (!isset($schedules['weekly'])) {
+            $schedules['weekly'] = array(
+                'interval' => WEEK_IN_SECONDS,
+                'display'  => __('Once Weekly', 'wc-google-sheets-sync'),
+            );
+        }
+        return $schedules;
+    }
+
+    /**
+     * (Re)schedule the auto-sync cron event based on the current settings.
+     * Hooked to option add/update so it stays in sync with the settings page.
+     */
+    public function update_sync_schedule() {
+        $options  = get_option('wc_gs_sync_options', array());
+        $enabled  = !empty($options['auto_sync_enabled']);
+        $interval = isset($options['auto_sync_interval']) ? $options['auto_sync_interval'] : 'hourly';
+
+        $valid_intervals = array('hourly', 'twicedaily', 'daily', 'weekly');
+        if (!in_array($interval, $valid_intervals, true)) {
+            $interval = 'hourly';
+        }
+
+        // Always clear any existing schedule first so interval changes take effect
+        $timestamp = wp_next_scheduled('wc_gs_sync_scheduled_import');
+        if ($timestamp) {
+            wp_unschedule_event($timestamp, 'wc_gs_sync_scheduled_import');
+        }
+
+        if ($enabled) {
+            wp_schedule_event(time() + MINUTE_IN_SECONDS, $interval, 'wc_gs_sync_scheduled_import');
+            error_log('WC_GS_Sync: Auto-sync scheduled (' . $interval . ')');
+        } else {
+            error_log('WC_GS_Sync: Auto-sync disabled, schedule cleared');
+        }
+    }
+
+    /**
+     * Cron callback: run a sync for every connected sheet.
+     */
+    public function run_scheduled_sync() {
+        $options = get_option('wc_gs_sync_options', array());
+        if (empty($options['auto_sync_enabled'])) {
+            return;
+        }
+
+        $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
+        if (empty($connected_sheets) || !is_array($connected_sheets)) {
+            return;
+        }
+
+        foreach ($connected_sheets as $sheet_id => $sheet_config) {
+            if (!is_array($sheet_config)) {
+                continue;
+            }
+            $sync_id = uniqid('cron_sync_');
+            $this->init_sync_progress($sync_id, $sheet_config);
+            $this->sync_sheet_to_woocommerce($sync_id, $sheet_config);
+        }
+    }
+
+    /**
+     * AJAX: export all WooCommerce products into a connected sheet.
+     */
+    public function handle_export_request() {
+        $nonce = isset($_POST['nonce']) ? $_POST['nonce'] : '';
+        if (!wp_verify_nonce($nonce, 'wc_gs_sync_nonce')) {
+            wp_die('Security check failed');
+        }
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $sheet_id = isset($_POST['sheet_id']) ? sanitize_text_field($_POST['sheet_id']) : '';
+        if (empty($sheet_id)) {
+            wp_send_json_error('Invalid sheet ID');
+        }
+
+        $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
+        if (!isset($connected_sheets[$sheet_id])) {
+            wp_send_json_error('Sheet not found');
+        }
+
+        $result = $this->export_products_to_sheet($connected_sheets[$sheet_id]);
+
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+
+        wp_send_json_success($result);
+    }
+
+    /**
+     * Export every simple product into the given sheet, replacing its data rows
+     * while preserving the header row.
+     */
+    private function export_products_to_sheet($sheet_config) {
+        @set_time_limit(0);
+        if (function_exists('wp_raise_memory_limit')) {
+            wp_raise_memory_limit('admin');
+        }
+
+        require_once WC_GS_SYNC_PLUGIN_PATH . 'includes/class-wc-gs-product-exporter.php';
+
+        $google_api = $this->get_google_api();
+        if (!$google_api->is_authenticated()) {
+            return new WP_Error('auth_error', 'Not authenticated with Google');
+        }
+
+        $spreadsheet_id = $sheet_config['sheet_id'];
+        $tab = isset($sheet_config['sheet_tab']) ? $sheet_config['sheet_tab'] : 'Sheet1';
+
+        // Read the existing header row to align the export to the sheet's columns
+        $existing = $google_api->get_sheet_data($spreadsheet_id, $tab . '!1:1');
+        if (is_wp_error($existing)) {
+            return $existing;
+        }
+
+        $headers = (!empty($existing) && isset($existing[0]) && is_array($existing[0])) ? $existing[0] : array();
+
+        // If the sheet has no header row yet, write a default template
+        if (empty($headers)) {
+            $headers = $this->get_default_export_headers();
+            $write_headers = $google_api->batch_update_sheet($spreadsheet_id, array(
+                array('range' => $tab . '!A1', 'values' => array($headers)),
+            ));
+            if (is_wp_error($write_headers)) {
+                return $write_headers;
+            }
+        }
+
+        // Build a row for every simple product (paged to limit memory)
+        $exporter = new WC_GS_Product_Exporter();
+        $rows = array();
+        $paged = 1;
+
+        do {
+            $products = wc_get_products(array(
+                'type'    => 'simple',
+                'status'  => array('publish', 'draft', 'pending', 'private'),
+                'limit'   => 100,
+                'page'    => $paged,
+                'orderby' => 'ID',
+                'order'   => 'ASC',
+            ));
+
+            foreach ($products as $product) {
+                $rows[] = $exporter->build_row($product, $headers);
+            }
+            $paged++;
+        } while (count($products) === 100);
+
+        // Clear existing data rows (keep the header), then write fresh data
+        $clear = $google_api->clear_values($spreadsheet_id, $tab . '!A2:ZZ');
+        if (is_wp_error($clear)) {
+            return $clear;
+        }
+
+        if (!empty($rows)) {
+            $chunks = array_chunk($rows, 500);
+            $start_row = 2;
+            foreach ($chunks as $chunk) {
+                $write = $google_api->batch_update_sheet($spreadsheet_id, array(
+                    array('range' => $tab . '!A' . $start_row, 'values' => $chunk),
+                ));
+                if (is_wp_error($write)) {
+                    return $write;
+                }
+                $start_row += count($chunk);
+            }
+        }
+
+        return array(
+            'exported' => count($rows),
+            'message'  => sprintf(__('Exported %d products to the sheet.', 'wc-google-sheets-sync'), count($rows)),
+        );
+    }
+
+    /**
+     * Default header row written when exporting to a sheet that has none.
+     */
+    private function get_default_export_headers() {
+        return array(
+            'ID', 'SKU', 'GTIN, UPC, EAN, or ISBN', 'Stock Management', 'Quantity',
+            'Stock Status', 'Backorder', 'Low Stock Threshold', 'Sold Individually',
+            'Name', 'Description', 'Short Description', 'Type', 'Status', 'Visibility',
+            'Catalog Visibility', 'Password', 'Featured', 'Regular Price', 'Sale Price',
+            'Sale Start Date', 'Sale End Date', 'Tax Status', 'Tax Class', 'Purchase Note',
+            'Position', 'Allow Reviews', 'Weight', 'Dimension (L)', 'Dimension (W)',
+            'Dimension (H)', 'Shipping Class', 'Upsells', 'Cross-sells', 'Category Path',
+            'Tags', 'Image', 'Gallery Image 01', 'Gallery Image 02', 'Gallery Image 03',
+            'Gallery Image 04', 'Sync Status', 'Sync Error', 'Last Synced', 'Force Update',
+            'Delete',
+        );
     }
     
     /**
