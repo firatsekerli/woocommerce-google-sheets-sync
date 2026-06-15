@@ -1,0 +1,1311 @@
+<?php
+/**
+ * WooCommerce Google Sheets Sync Handler
+ * 
+ * @package WC_Google_Sheets_Sync
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class WC_GS_Sync_Handler {
+    
+    private $google_api;
+    
+    public function __construct() {
+        // Don't initialize Google API in constructor to avoid dependency issues
+        $this->google_api = null;
+        
+        // Register AJAX handlers
+        add_action('wp_ajax_wc_gs_sync_sheet', array($this, 'handle_sync_request'));
+        add_action('wp_ajax_wc_gs_get_sync_progress', array($this, 'get_sync_progress'));
+    }
+    
+    /**
+     * Get Google API instance (lazy loading)
+     */
+    private function get_google_api() {
+        if ($this->google_api === null) {
+            // Check if the class exists
+            if (!class_exists('WC_GS_Google_Sheets_API')) {
+                throw new Exception('Google Sheets API class not found. Please ensure the Google API is properly configured.');
+            }
+            $this->google_api = new WC_GS_Google_Sheets_API();
+        }
+        return $this->google_api;
+    }
+    
+    /**
+     * NEW: Find column indices for write-back fields
+     */
+    private function find_column_indices($headers) {
+        $columns = array();
+        
+        // Map of field names to possible header variations
+        $field_mappings = array(
+            'id' => array('ID', 'id', 'Product ID'),
+			'sku' => array('SKU', 'sku', 'Product SKU', 'Product Code'), // NEW: Add SKU mapping
+			'gtin' => array('GTIN, UPC, EAN, or ISBN', 'GTIN', 'UPC', 'EAN', 'ISBN'), // NEW: GTIN mapping
+			'quantity' => array('Quantity', 'quantity', 'Stock Quantity', 'Stock', 'Qty'), // NEW: Add this line
+            'sync_status' => array('Sync Status', 'sync_status', 'Status'),
+            'sync_error' => array('Sync Error', 'sync_error', 'Error'),
+            'last_synced' => array('Last Synced', 'last_synced', 'Last Updated', 'Synced At'),
+			'delete' => array('Delete', 'delete', 'Remove', 'Delete Product') // NEW: Add this line
+        );
+        
+        foreach ($field_mappings as $field => $possible_headers) {
+            foreach ($possible_headers as $header_name) {
+                $index = array_search($header_name, $headers);
+                if ($index !== false) {
+                    $columns[$field] = array(
+                        'index' => $index,
+                        'letter' => $this->column_index_to_letter($index),
+                        'header' => $header_name
+                    );
+                    error_log('WC_GS_Sync: Found ' . $field . ' column: "' . $header_name . '" at index ' . $index . ' (column ' . $columns[$field]['letter'] . ')');
+                    break; // Found it, stop looking for this field
+                }
+            }
+        }
+        
+        return $columns;
+    }
+    
+    /**
+     * NEW: Convert column index to letter (0=A, 1=B, etc.)
+     */
+    private function column_index_to_letter($index) {
+        $letter = '';
+        while ($index >= 0) {
+            $letter = chr(65 + ($index % 26)) . $letter;
+            $index = intval($index / 26) - 1;
+        }
+        return $letter;
+    }
+    
+    /**
+     * Handle sync request from dashboard
+     */
+    public function handle_sync_request() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'wc_gs_sync_nonce')) {
+            wp_die('Security check failed');
+        }
+        
+        $sheet_id = sanitize_text_field($_POST['sheet_id']);
+        
+        if (empty($sheet_id)) {
+            wp_send_json_error('Invalid sheet ID');
+        }
+        
+        // Get sheet configuration
+        $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
+        
+        if (!isset($connected_sheets[$sheet_id])) {
+            wp_send_json_error('Sheet not found');
+        }
+        
+        $sheet_config = $connected_sheets[$sheet_id];
+        
+        // Initialize sync progress
+        $sync_id = uniqid('sync_');
+        $this->init_sync_progress($sync_id, $sheet_config);
+        
+        // Start sync process
+        $result = $this->sync_sheet_to_woocommerce($sync_id, $sheet_config);
+        
+        wp_send_json_success(array(
+            'sync_id' => $sync_id,
+            'message' => 'Sync started successfully'
+        ));
+    }
+    
+    /**
+     * Initialize sync progress tracking
+     */
+    private function init_sync_progress($sync_id, $sheet_config) {
+        $progress_data = array(
+            'sync_id' => $sync_id,
+            'sheet_title' => $sheet_config['sheet_title'],
+            'status' => 'starting',
+            'progress' => 0,
+            'total_rows' => 0,
+            'processed_rows' => 0,
+            'created_products' => 0,
+            'updated_products' => 0,
+            'skipped_rows' => 0,
+            'errors' => array(),
+            'current_step' => 'Initializing sync...',
+            'started_at' => current_time('mysql'),
+            'completed_at' => null
+        );
+        
+        set_transient('wc_gs_sync_progress_' . $sync_id, $progress_data, 3600); // 1 hour
+    }
+    
+    /**
+     * Update sync progress
+     */
+    private function update_sync_progress($sync_id, $updates) {
+        $progress = get_transient('wc_gs_sync_progress_' . $sync_id);
+        if ($progress) {
+            $progress = array_merge($progress, $updates);
+            set_transient('wc_gs_sync_progress_' . $sync_id, $progress, 3600);
+        }
+    }
+    
+    /**
+     * Get sync progress for AJAX calls
+     */
+    public function get_sync_progress() {
+        $sync_id = sanitize_text_field($_GET['sync_id']);
+        $progress = get_transient('wc_gs_sync_progress_' . $sync_id);
+        
+        if (!$progress) {
+            wp_send_json_error('Sync progress not found');
+        }
+        
+        wp_send_json_success($progress);
+    }
+    
+    /**
+     * Main sync function: Sheets → WooCommerce
+     * UPDATED: Now includes write-back functionality
+     */
+    private function sync_sheet_to_woocommerce($sync_id, $sheet_config) {
+        try {
+            // Update progress: Reading sheet data
+            $this->update_sync_progress($sync_id, array(
+                'status' => 'reading',
+                'current_step' => 'Reading data from Google Sheets...'
+            ));
+            
+            // Get sheet data
+            $sheet_data = $this->get_sheet_data($sheet_config);
+            
+            if (is_wp_error($sheet_data)) {
+                throw new Exception($sheet_data->get_error_message());
+            }
+            
+            if (empty($sheet_data)) {
+                throw new Exception('No data found in sheet');
+            }
+            
+            // Parse headers and data
+            $headers = $sheet_data[0]; // Row 1 = Headers
+            $data_rows = array_slice($sheet_data, 1); // Skip header row, get all data rows
+            
+            error_log('WC_GS_Sync: Total sheet rows: ' . count($sheet_data));
+            error_log('WC_GS_Sync: Data rows extracted (after skipping header): ' . count($data_rows));
+            error_log('WC_GS_Sync: Headers: ' . print_r($headers, true));
+            
+            // Update progress with total count
+            $this->update_sync_progress($sync_id, array(
+                'total_rows' => count($data_rows),
+                'status' => 'processing',
+                'current_step' => 'Processing products...'
+            ));
+            
+            // Process each row
+            $created = 0;
+            $updated = 0;
+			$deleted = 0; // NEW: Track deletions
+            $skipped = 0;
+            $errors = array();
+            $created_products = array(); // NEW: Track created products for write-back
+            $missing_ids = array(); // NEW: Track products that need ID write-back
+			$sku_write_backs = array(); // NEW: Track SKU write-backs
+			$gtin_write_backs = array(); // NEW: Track GTIN changes for write-back
+			$quantity_write_backs = array(); // NEW: Track Quantity write-backs
+            $sync_results = array(); // NEW: Track detailed sync results for each row
+            
+            foreach ($data_rows as $row_index => $row) {
+                try {
+                    // FIXED: Proper Google Sheets row calculation
+                    // row_index 0 = first data row = Google Sheets row 2
+                    // row_index 1 = second data row = Google Sheets row 3, etc.
+                    $google_sheet_row = $row_index + 2; // +2 because: +1 for 1-based indexing, +1 to skip header
+                    
+                    error_log('WC_GS_Sync: Processing data row_index: ' . $row_index . ' -> Google Sheet row: ' . $google_sheet_row);
+                    error_log('WC_GS_Sync: Row data: ' . print_r($row, true));
+                    
+                    $result = $this->process_product_row($headers, $row, $google_sheet_row);
+                    
+                    // Track detailed results for write-back
+                    $sync_results[$google_sheet_row] = array(
+                        'status' => 'success',
+                        'action' => $result['action'],
+                        'product_id' => $result['product_id'],
+                        'error' => null
+                    );
+                    
+                    if ($result['action'] === 'created') {
+                        $created++;
+                        // Track for write-back - use the calculated Google Sheets row number
+                        $created_products[$google_sheet_row] = $result['product_id'];
+						error_log('WC_GS_Sync: Tracking created product ID ' . $result['product_id'] . ' for Google Sheets row ' . $google_sheet_row);
+						
+						// NEW: Track SKU for write-back if it was auto-generated
+						if (isset($result['generated_sku'])) {
+							$sku_write_backs[$google_sheet_row] = $result['generated_sku'];
+							error_log('WC_GS_Sync: Tracking generated SKU ' . $result['generated_sku'] . ' for Google Sheets row ' . $google_sheet_row);
+						}
+						
+                    } elseif ($result['action'] === 'updated') {
+                        $updated++;
+                        // Check if ID was missing and needs write-back
+                        if ($result['missing_id']) {
+                            $missing_ids[$google_sheet_row] = $result['product_id'];
+                            error_log('WC_GS_Sync: Tracking missing ID ' . $result['product_id'] . ' for Google Sheets row ' . $google_sheet_row);
+                        }
+						
+						// NEW: Track SKU for write-back if it was auto-generated during update
+						if (isset($result['generated_sku'])) {
+							$sku_write_backs[$google_sheet_row] = $result['generated_sku'];
+							error_log('WC_GS_Sync: Tracking generated SKU ' . $result['generated_sku'] . ' for Google Sheets row ' . $google_sheet_row);
+						}
+						
+						// NEW: Track quantity for write-back if it was preserved from WooCommerce
+						if (isset($result['generated_quantity'])) {
+							$quantity_write_backs[$google_sheet_row] = $result['generated_quantity'];
+							error_log('WC_GS_Sync: Tracking quantity ' . $result['generated_quantity'] . ' for Google Sheets row ' . $google_sheet_row);
+						}
+						
+						// NEW: Track GTIN changes
+						if (isset($result['gtin_changed']) && $result['gtin_changed']) {
+							$gtin_write_backs[$google_sheet_row] = $result['current_gtin'];
+						}
+						
+                    } elseif ($result['action'] === 'deleted') {
+						$deleted++; // NEW: Count deletions
+						error_log('WC_GS_Sync: Tracked deletion for Google Sheets row ' . $google_sheet_row);
+					} else {
+						$skipped++;
+					}
+                    
+                } catch (Exception $e) {
+                    $google_sheet_row = $row_index + 2; // Keep consistent calculation
+                    $errors[] = array(
+                        'row' => $google_sheet_row,
+                        'message' => $e->getMessage()
+                    );
+                    $skipped++;
+                    
+                    // Track error for write-back
+                    $sync_results[$google_sheet_row] = array(
+                        'status' => 'error',
+                        'action' => 'failed',
+                        'product_id' => null,
+                        'error' => $e->getMessage()
+                    );
+                    
+                    error_log('WC_GS_Sync: Error processing row ' . $google_sheet_row . ': ' . $e->getMessage());
+                }
+                
+                // Update progress
+                $processed = $row_index + 1;
+                $progress_percent = round(($processed / count($data_rows)) * 100);
+                
+                $this->update_sync_progress($sync_id, array(
+                    'progress' => $progress_percent,
+                    'processed_rows' => $processed,
+                    'created_products' => $created,
+                    'updated_products' => $updated,
+					'deleted_products' => $deleted, // NEW: Track deletions
+                    'skipped_rows' => $skipped,
+                    'errors' => $errors,
+                    'current_step' => "Processing row {$processed} of " . count($data_rows) . "..."
+                ));
+            }
+            
+            // NEW: Write product IDs back to Google Sheets (both created and missing IDs)
+            // FIXED: Use + operator instead of array_merge to preserve row number keys
+            $all_write_backs = $created_products + $missing_ids;
+            error_log('WC_GS_Sync: Created products array: ' . print_r($created_products, true));
+            error_log('WC_GS_Sync: Missing IDs array: ' . print_r($missing_ids, true));
+            error_log('WC_GS_Sync: Merged write-backs array: ' . print_r($all_write_backs, true));
+            
+			if (!empty($all_write_backs) || !empty($sku_write_backs) || !empty($quantity_write_backs) || !empty($gtin_write_backs) || !empty($sync_results)) {
+				$this->write_sync_results_back($sync_id, $sheet_config, $headers, $all_write_backs, $sku_write_backs, $quantity_write_backs, $gtin_write_backs, $sync_results);
+			}
+            
+            // Complete sync
+            $this->update_sync_progress($sync_id, array(
+                'status' => 'completed',
+                'progress' => 100,
+                'current_step' => 'Sync completed successfully!',
+                'completed_at' => current_time('mysql')
+            ));
+            
+            // Update last sync time in sheet config
+            $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
+			$connected_sheets[$sheet_config['sheet_id']]['last_synced'] = current_time('mysql');
+			update_option('wc_gs_sync_connected_sheets', $connected_sheets);
+            
+			// Track when this sync completed for future bidirectional logic
+			update_option('wc_gs_sync_last_sync_time', current_time('timestamp'));
+
+            return array(
+                'success' => true,
+                'created' => $created,
+                'updated' => $updated,
+                'skipped' => $skipped,
+                'errors' => $errors
+            );
+            
+        } catch (Exception $e) {
+            // Handle sync error
+            $this->update_sync_progress($sync_id, array(
+                'status' => 'error',
+                'current_step' => 'Sync failed: ' . $e->getMessage(),
+                'completed_at' => current_time('mysql')
+            ));
+            
+            return array(
+                'success' => false,
+                'error' => $e->getMessage()
+            );
+        }
+    }
+    
+    /**
+     * NEW: Write sync results back to Google Sheets (IDs, status, errors, timestamps)
+     */
+    private function write_sync_results_back($sync_id, $sheet_config, $headers, $product_ids, $sku_write_backs, $quantity_write_backs, $gtin_write_backs, $sync_results) {
+        error_log('WC_GS_Sync: *** WRITE-BACK FUNCTION CALLED - NEW CODE RUNNING ***');
+        
+        if (empty($product_ids) && empty($sku_write_backs) && empty($quantity_write_backs) && empty($sync_results)) {
+			error_log('WC_GS_Sync: No data to write back');
+			return;
+		}
+        
+        try {
+            $this->update_sync_progress($sync_id, array(
+                'current_step' => 'Writing sync results back to sheet...'
+            ));
+            
+            error_log('WC_GS_Sync: Starting write-back for ' . count($sync_results) . ' rows');
+            error_log('WC_GS_Sync: Product IDs: ' . print_r($product_ids, true));
+			error_log('WC_GS_Sync: SKU write-backs: ' . print_r($sku_write_backs, true));
+            error_log('WC_GS_Sync: Sync results: ' . print_r($sync_results, true));
+            
+            $google_api = $this->get_google_api();
+            
+            if (!$google_api->is_authenticated()) {
+                error_log('WC_GS_Sync: Cannot write back - not authenticated');
+                return;
+            }
+            
+            // Find column indices for all the fields we want to update
+            $columns = $this->find_column_indices($headers);
+            
+            if (empty($columns)) {
+                error_log('WC_GS_Sync: No valid columns found for write-back');
+                return;
+            }
+            
+            // Prepare batch update data
+            $updates = array();
+            $current_time = current_time('n/j/Y G:i:s'); // Match your existing format
+            
+            // Process each row that was synced
+            foreach ($sync_results as $row_number => $result) {
+                // ABSOLUTE SAFETY CHECK: Never write to header row (row 1) or invalid rows
+                if ($row_number < 2) {
+                    error_log('WC_GS_Sync: SKIPPING - Invalid row number: ' . $row_number . ' (header is row 1, data starts at row 2)');
+                    continue;
+                }
+                
+                // Write Product ID (if available and successful - but NOT for deleted products)
+				if (isset($columns['id']) && isset($product_ids[$row_number]) && $result['action'] !== 'deleted') {
+					$updates[] = array(
+						'range' => $sheet_config['sheet_tab'] . '!' . $columns['id']['letter'] . $row_number,
+						'values' => array(array($product_ids[$row_number]))
+					);
+				}
+
+				// Clear Product ID for deleted products
+				if (isset($columns['id']) && $result['action'] === 'deleted') {
+					$updates[] = array(
+						'range' => $sheet_config['sheet_tab'] . '!' . $columns['id']['letter'] . $row_number,
+						'values' => array(array('')) // Clear the ID
+					);
+				}
+				
+				// NEW: Write SKU (if available and successful - but NOT for deleted products)
+				if (isset($columns['sku']) && isset($sku_write_backs[$row_number]) && $result['action'] !== 'deleted') {
+					$updates[] = array(
+						'range' => $sheet_config['sheet_tab'] . '!' . $columns['sku']['letter'] . $row_number,
+						'values' => array(array($sku_write_backs[$row_number]))
+					);
+					error_log('WC_GS_Sync: Added SKU write-back for row ' . $row_number . ': ' . $sku_write_backs[$row_number]);
+				}
+
+				// Clear SKU for deleted products
+				if (isset($columns['sku']) && $result['action'] === 'deleted') {
+					$updates[] = array(
+						'range' => $sheet_config['sheet_tab'] . '!' . $columns['sku']['letter'] . $row_number,
+						'values' => array(array(''))
+					);
+				}
+				
+				// NEW: Write Quantity (if available and successful - but NOT for deleted products)
+				if (isset($columns['quantity']) && isset($quantity_write_backs[$row_number]) && $result['action'] !== 'deleted') {
+					$updates[] = array(
+						'range' => $sheet_config['sheet_tab'] . '!' . $columns['quantity']['letter'] . $row_number,
+						'values' => array(array($quantity_write_backs[$row_number]))
+					);
+					error_log('WC_GS_Sync: Added Quantity write-back for row ' . $row_number . ': ' . $quantity_write_backs[$row_number]);
+				}
+
+				// Clear Quantity for deleted products
+				if (isset($columns['quantity']) && $result['action'] === 'deleted') {
+					$updates[] = array(
+						'range' => $sheet_config['sheet_tab'] . '!' . $columns['quantity']['letter'] . $row_number,
+						'values' => array(array(''))
+					);
+				}
+				
+				// NEW: Write GTIN (including empty values to clear sheet)
+				if (isset($columns['gtin']) && isset($gtin_write_backs[$row_number]) && $result['action'] !== 'deleted') {
+					$updates[] = array(
+						'range' => $sheet_config['sheet_tab'] . '!' . $columns['gtin']['letter'] . $row_number,
+						'values' => array(array($gtin_write_backs[$row_number])) // Could be empty string
+					);
+					error_log('WC_GS_Sync: Added GTIN write-back for row ' . $row_number . ': "' . $gtin_write_backs[$row_number] . '"');
+				}
+
+				// Clear GTIN for deleted products
+				if (isset($columns['gtin']) && $result['action'] === 'deleted') {
+					$updates[] = array(
+						'range' => $sheet_config['sheet_tab'] . '!' . $columns['gtin']['letter'] . $row_number,
+						'values' => array(array(''))
+					);
+				}
+                
+                // Write Sync Status
+                if (isset($columns['sync_status'])) {
+                    if ($result['status'] === 'success') {
+						$status = ($result['action'] === 'deleted') ? 'deleted' : 'synced';
+					} else {
+						$status = 'error';
+					}
+                    $updates[] = array(
+                        'range' => $sheet_config['sheet_tab'] . '!' . $columns['sync_status']['letter'] . $row_number,
+                        'values' => array(array($status))
+                    );
+                }
+                
+                // Write Sync Error
+                if (isset($columns['sync_error'])) {
+                    $error_msg = ($result['status'] === 'error') ? $result['error'] : '';
+                    $updates[] = array(
+                        'range' => $sheet_config['sheet_tab'] . '!' . $columns['sync_error']['letter'] . $row_number,
+                        'values' => array(array($error_msg))
+                    );
+                }
+                
+                // Write Last Synced timestamp (for successful syncs)
+                if (isset($columns['last_synced']) && $result['status'] === 'success') {
+                    $updates[] = array(
+                        'range' => $sheet_config['sheet_tab'] . '!' . $columns['last_synced']['letter'] . $row_number,
+                        'values' => array(array($current_time))
+                    );
+                }
+                
+                error_log('WC_GS_Sync: Prepared updates for row ' . $row_number . ' - Status: ' . $result['status'] . ', Product ID: ' . ($product_ids[$row_number] ?? 'none'));
+            }
+            
+            if (empty($updates)) {
+                error_log('WC_GS_Sync: No valid updates after filtering - all rows were invalid');
+                return;
+            }
+            
+            error_log('WC_GS_Sync: Prepared ' . count($updates) . ' total updates for batch write');
+            
+            // Write back to sheet
+            $result = $google_api->batch_update_sheet($sheet_config['sheet_id'], $updates);
+            
+            if (is_wp_error($result)) {
+                error_log('WC_GS_Sync: Failed to write back data: ' . $result->get_error_message());
+            } else {
+                error_log('WC_GS_Sync: Successfully wrote back ' . count($updates) . ' updates including SKUs');
+                
+                // Update progress to show write-back completion
+                $this->update_sync_progress($sync_id, array(
+                    'current_step' => 'Sync completed! All data written back to sheet.'
+                ));
+            }
+            
+        } catch (Exception $e) {
+            error_log('WC_GS_Sync: Exception during write-back: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Get data from Google Sheet
+     */
+    private function get_sheet_data($sheet_config) {
+        $google_api = $this->get_google_api();
+        
+        if (!$google_api->is_authenticated()) {
+            return new WP_Error('auth_error', 'Not authenticated with Google');
+        }
+        
+        // Get data from specified range (A1:ZZ1000 to get plenty of data)
+        $range = $sheet_config['sheet_tab'] . '!A1:ZZ1000';
+        
+        return $google_api->get_sheet_data($sheet_config['sheet_id'], $range);
+    }
+    
+    /**
+     * Process a single product row
+     * UPDATED: Track when ID is missing for write-back
+     */
+    private function process_product_row($headers, $row, $row_number) {
+        error_log('WC_GS_Sync: === PROCESSING ROW ' . $row_number . ' ===');
+        
+        $data_builder = new WC_GS_Product_Data_Builder();
+        $product_data = $data_builder->build_product_data($row, $headers);
+        
+        error_log('WC_GS_Sync: Built product data for row ' . $row_number . ': ' . print_r($product_data, true));
+		
+		// NEW: Check if SKU was originally empty
+		$original_sku = '';
+		$sku_index = array_search('SKU', $headers);
+		if ($sku_index !== false && isset($row[$sku_index])) {
+			$original_sku = trim($row[$sku_index]);
+		}
+		$had_empty_sku = empty($original_sku);
+		
+		// NEW: Get original GTIN from sheet
+		$original_gtin = '';
+		$gtin_columns = ['GTIN, UPC, EAN, or ISBN', 'GTIN', 'UPC', 'EAN', 'ISBN'];
+		foreach ($gtin_columns as $column_name) {
+			$gtin_index = array_search($column_name, $headers);
+			if ($gtin_index !== false && isset($row[$gtin_index])) {
+				$original_gtin = trim($row[$gtin_index]);
+				if ($original_gtin) break;
+			}
+		}
+    
+		error_log('WC_GS_Sync: Row ' . $row_number . ' - Original SKU: ' . ($original_sku ?: 'empty') . ', Generated SKU: ' . $product_data['sku']);
+		
+		// NEW: Check if this is a delete request
+		$should_delete = $this->should_delete_product($product_data);
+    
+		if ($should_delete) {
+			return $this->handle_product_deletion($product_data, $row_number);
+		}
+        
+        $validation = $data_builder->validate_product_data($product_data);
+
+        if (!$validation['is_valid']) {
+            throw new Exception('Validation failed: ' . implode(', ', $validation['errors']));
+        }
+        
+        // Check if product exists (by ID, SKU, or Name)
+        $existing_product = null;
+        $had_empty_id = empty($product_data['id']); // Track if ID was originally empty
+        $match_method = 'none';
+        
+        error_log('WC_GS_Sync: Row ' . $row_number . ' - Original ID: ' . ($product_data['id'] ?? 'empty') . ', SKU: ' . ($product_data['sku'] ?? 'empty') . ', Name: ' . ($product_data['name'] ?? 'empty'));
+        
+        // First check by ID
+        if (!empty($product_data['id'])) {
+            $existing_product = wc_get_product($product_data['id']);
+            $match_method = 'ID';
+            error_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by ID: ' . $product_data['id'] . ' -> ' . ($existing_product ? 'Found product ' . $existing_product->get_id() : 'Not found'));
+        } 
+        // Then check by SKU
+        elseif (!empty($product_data['sku'])) {
+            $product_id = wc_get_product_id_by_sku($product_data['sku']);
+            if ($product_id) {
+                $existing_product = wc_get_product($product_id);
+                $match_method = 'SKU';
+                error_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by SKU: ' . $product_data['sku'] . ' -> Found product ' . $product_id);
+            } else {
+                error_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by SKU: ' . $product_data['sku'] . ' -> Not found');
+            }
+        }
+        // Finally check by Name to prevent duplicates
+        elseif (!empty($product_data['name'])) {
+            $existing_product = $this->find_product_by_name($product_data['name']);
+            $match_method = 'Name';
+            error_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by Name: ' . $product_data['name'] . ' -> ' . ($existing_product ? 'Found product ' . $existing_product->get_id() : 'Not found'));
+        }
+        
+        if ($existing_product && $existing_product->get_id()) {
+			// Update existing product
+			$found_product_id = $existing_product->get_id();
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - UPDATING existing product ' . $found_product_id . ' (matched by ' . $match_method . ')');
+			
+			// CRITICAL FIX: Capture current WooCommerce values BEFORE updating the product
+			$current_sku_before_update = $existing_product->get_sku();
+			$current_gtin_before_update = $existing_product->get_meta('_global_unique_id');
+			$current_quantity_before_update = $existing_product->get_stock_quantity(); // NEW: Add this line
+			
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - BEFORE UPDATE - WC SKU: "' . $current_sku_before_update . '", WC GTIN: "' . $current_gtin_before_update . '"');
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - SHEET VALUES - SKU: "' . $original_sku . '", GTIN: "' . $original_gtin . '"');
+			
+			// SIMPLIFIED BIDIRECTIONAL LOGIC - Replace the complex logic in process_product_row()
+
+			// SMART FIX: Only preserve WooCommerce values when they were recently changed
+			$will_write_sku_back = false;
+			$will_write_gtin_back = false;
+			$will_write_quantity_back = false; // NEW: Add this line
+
+			// Get product's last modified time
+			$product_modified = get_post_modified_time('U', false, $existing_product->get_id());
+			$sheet_last_synced = get_option('wc_gs_sync_last_sync_time', 0);
+
+			// Check if product was modified AFTER last sync (indicates manual WooCommerce changes)
+			$product_recently_modified = ($product_modified > $sheet_last_synced);
+
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - Product modified: ' . date('Y-m-d H:i:s', $product_modified) . ', Last sync: ' . date('Y-m-d H:i:s', $sheet_last_synced) . ', Recently modified: ' . ($product_recently_modified ? 'YES' : 'NO'));
+
+			// SKU Logic - SIMPLIFIED
+			if ($had_empty_sku && !empty($product_data['sku'])) {
+				// Auto-generation case - always use sheet value
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU auto-generation: will use sheet value "' . $product_data['sku'] . '"');
+			} elseif ($current_sku_before_update !== $original_sku) {
+				// Values differ - decide who wins
+				if ($product_recently_modified) {
+					// Product was recently modified in WooCommerce - preserve WooCommerce value
+					$product_data['sku'] = $current_sku_before_update;
+					$will_write_sku_back = true;
+					error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU: Product recently modified, preserving WooCommerce value "' . $current_sku_before_update . '"');
+				} else {
+					// Product NOT recently modified - use sheet value
+					error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU: Product not recently modified, using sheet value "' . $original_sku . '"');
+					// Keep product_data['sku'] as-is (sheet value)
+				}
+			} else {
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU: Values match, no action needed');
+			}
+
+			// GTIN Logic - SIMPLIFIED (same pattern)
+			if ($current_gtin_before_update !== $original_gtin) {
+				// Values differ - decide who wins
+				if ($product_recently_modified) {
+					// Product was recently modified in WooCommerce - preserve WooCommerce value
+					if (!empty($product_data['meta_data'])) {
+						foreach ($product_data['meta_data'] as &$meta) {
+							if ($meta['key'] === '_global_unique_id') {
+								$meta['value'] = $current_gtin_before_update;
+								$will_write_gtin_back = true;
+								break;
+							}
+						}
+					}
+					error_log('WC_GS_Sync: Row ' . $row_number . ' - GTIN: Product recently modified, preserving WooCommerce value "' . $current_gtin_before_update . '"');
+				} else {
+					// Product NOT recently modified - use sheet value
+					error_log('WC_GS_Sync: Row ' . $row_number . ' - GTIN: Product not recently modified, using sheet value "' . $original_gtin . '"');
+					// Keep product_data['meta_data'] as-is (sheet value)
+				}
+			} else {
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - GTIN: Values match, no action needed');
+			}
+			
+			// NEW: Quantity Logic - SIMPLIFIED (same pattern)
+			// Convert to string for comparison (handle null/empty cases)
+			$current_quantity_str = ($current_quantity_before_update !== null) ? strval($current_quantity_before_update) : '';
+			$original_quantity_str = ($original_quantity !== '') ? strval($original_quantity) : '';
+
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - Current WC Quantity: "' . $current_quantity_str . '", Sheet Quantity: "' . $original_quantity_str . '"');
+
+			if ($current_quantity_str !== $original_quantity_str) {
+				// Values differ - decide who wins
+				if ($product_recently_modified) {
+					// Product was recently modified in WooCommerce - preserve WooCommerce value
+					if (isset($product_data['stock_quantity'])) {
+						$product_data['stock_quantity'] = $current_quantity_before_update;
+					}
+					$will_write_quantity_back = true;
+					error_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Product recently modified, preserving WooCommerce value "' . $current_quantity_str . '"');
+				} else {
+					// Product NOT recently modified - use sheet value
+					error_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Product not recently modified, using sheet value "' . $original_quantity_str . '"');
+					// Keep product_data['stock_quantity'] as-is (sheet value)
+				}
+			} else {
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Values match, no action needed');
+			}
+
+			// Debug: Log final decision
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL DECISION: SKU write-back=' . ($will_write_sku_back ? 'YES' : 'NO') . ', GTIN write-back=' . ($will_write_gtin_back ? 'YES' : 'NO') . ', Quantity write-back=' . ($will_write_quantity_back ? 'YES' : 'NO'));
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL SKU to use: "' . ($product_data['sku'] ?? 'empty') . '"');
+
+			// Find GTIN value that will be used
+			$final_gtin = '';
+			if (!empty($product_data['meta_data'])) {
+				foreach ($product_data['meta_data'] as $meta) {
+					if ($meta['key'] === '_global_unique_id') {
+						$final_gtin = $meta['value'];
+						break;
+					}
+				}
+			}
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL GTIN to use: "' . $final_gtin . '"');
+			
+			// Now update the product with sheet data
+			$result = $this->update_product($existing_product, $product_data);
+			
+			// Set basic result data
+			$result['missing_id'] = $had_empty_id;
+			$result['row_number'] = $row_number;
+			$result['match_method'] = $match_method;
+			
+			// Track what needs to be written back to sheet
+			if ($will_write_sku_back) {
+				$result['generated_sku'] = $current_sku_before_update;
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - Will write SKU back to sheet: "' . $current_sku_before_update . '"');
+			}
+			
+			// NEW: Track quantity write-back
+			if ($will_write_quantity_back) {
+				$result['generated_quantity'] = $current_quantity_before_update;
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - Will write Quantity back to sheet: "' . $current_quantity_before_update . '"');
+			}
+
+			if ($will_write_gtin_back) {
+				$result['gtin_changed'] = true;
+				$result['current_gtin'] = $current_gtin_before_update;
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - Will write GTIN back to sheet: "' . $current_gtin_before_update . '"');
+			}
+			
+			error_log('WC_GS_Sync: Row ' . $row_number . ' - Update result: action=' . $result['action'] . ', product_id=' . $result['product_id'] . ', missing_id=' . ($result['missing_id'] ? 'true' : 'false'));
+			
+			return $result;
+        } else {
+            // Create new product
+            error_log('WC_GS_Sync: Row ' . $row_number . ' - CREATING new product (no existing product found)');
+            
+            $result = $this->create_product($product_data);
+            $result['row_number'] = $row_number; // TRACK THE ROW NUMBER
+            $result['match_method'] = 'new';
+            
+            error_log('WC_GS_Sync: Row ' . $row_number . ' - Create result: action=' . $result['action'] . ', product_id=' . $result['product_id']);
+			
+			// NEW: Track SKU generation for new products
+			if ($had_empty_sku && !empty($product_data['sku'])) {
+				$result['generated_sku'] = $product_data['sku'];
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU was auto-generated for new product: ' . $product_data['sku']);
+			}
+            
+            return $result;
+        }
+    }
+	
+	/**
+	 * NEW: Check if product should be deleted
+	 */
+	private function should_delete_product($product_data) {
+		$delete_value = $product_data['delete'] ?? '';
+    
+		if (empty($delete_value)) {
+			return false;
+		}
+    
+		$delete_value = strtolower(trim($delete_value));
+		return in_array($delete_value, ['yes', 'y', '1', 'true', 'delete']);
+	}
+
+	/**
+	 * NEW: Handle product deletion
+	 */
+	private function handle_product_deletion($product_data, $row_number) {
+		error_log('WC_GS_Sync: Row ' . $row_number . ' - DELETE REQUEST detected');
+    
+		// Find the product to delete (same logic as your existing product matching)
+		$product_to_delete = null;
+		$match_method = 'none';
+    
+		if (!empty($product_data['id'])) {
+			$product_to_delete = wc_get_product($product_data['id']);
+			$match_method = 'ID';
+		} elseif (!empty($product_data['sku'])) {
+			$product_id = wc_get_product_id_by_sku($product_data['sku']);
+			if ($product_id) {
+				$product_to_delete = wc_get_product($product_id);
+				$match_method = 'SKU';
+			}
+		} elseif (!empty($product_data['name'])) {
+			$product_to_delete = $this->find_product_by_name($product_data['name']);
+			$match_method = 'Name';
+		}
+    
+		if (!$product_to_delete || !$product_to_delete->get_id()) {
+			throw new Exception('Cannot delete product: Product not found');
+		}
+    
+		$product_id = $product_to_delete->get_id();
+		$delete_result = wp_delete_post($product_id, false); // Move to trash
+    
+		if (!$delete_result) {
+			throw new Exception('Failed to delete product ID ' . $product_id);
+		}
+    
+		error_log('WC_GS_Sync: Row ' . $row_number . ' - DELETE SUCCESS: Product ID ' . $product_id . ' deleted');
+    
+		return array(
+			'action' => 'deleted',
+			'product_id' => $product_id,
+			'missing_id' => false,
+			'row_number' => $row_number,
+			'match_method' => $match_method
+		);
+	}
+    
+    /**
+     * Find product by name to prevent duplicates
+     */
+    private function find_product_by_name($product_name) {
+        $posts = get_posts(array(
+            'post_type' => 'product',
+            'post_status' => array('publish', 'draft', 'pending', 'private'),
+            'title' => $product_name,
+            'posts_per_page' => 1,
+            'exact' => true
+        ));
+        
+        if (!empty($posts)) {
+            return wc_get_product($posts[0]->ID);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Create new WooCommerce product
+     */
+    private function create_product($product_data) {
+        $product = new WC_Product_Simple();
+        
+        // Set basic data
+        $product->set_name($product_data['name']);
+        
+        if (!empty($product_data['sku'])) {
+            $product->set_sku($product_data['sku']);
+        }
+		
+		if (!empty($product_data['meta_data'])) {
+			foreach ($product_data['meta_data'] as $meta) {
+				$product->update_meta_data($meta['key'], $meta['value']);
+			}
+		}
+        
+        if (!empty($product_data['description'])) {
+            $product->set_description($product_data['description']);
+        }
+        
+        if (!empty($product_data['short_description'])) {
+            $product->set_short_description($product_data['short_description']);
+        }
+        
+        if (!empty($product_data['regular_price'])) {
+            $product->set_regular_price($product_data['regular_price']);
+        }
+        
+        if (!empty($product_data['sale_price'])) {
+            $product->set_sale_price($product_data['sale_price']);
+        }
+		
+		// Set stock status
+		if (!empty($product_data['stock_status'])) {
+			$product->set_stock_status($product_data['stock_status']);
+		}
+		
+		// Set backorders
+		if (!empty($product_data['backorders'])) {
+			$product->set_backorders($product_data['backorders']);
+		}
+		
+		// Set low stock threshold
+		if (!empty($product_data['low_stock_amount'])) {
+			$product->set_low_stock_amount(intval($product_data['low_stock_amount']));
+		}
+        
+        if (!empty($product_data['weight'])) {
+            $product->set_weight($product_data['weight']);
+        }
+        
+        if (!empty($product_data['stock_quantity'])) {
+            $product->set_stock_quantity(intval($product_data['stock_quantity']));
+            $product->set_manage_stock(true);
+        }
+        
+        // Set status
+        $status = !empty($product_data['status']) ? $product_data['status'] : 'publish';
+        $product->set_status($status);
+        
+        // Save product
+        $product_id = $product->save();
+        
+        // Handle categories
+        if (!empty($product_data['categories'])) {
+            $this->set_product_categories($product_id, $product_data['categories']);
+        }
+        
+        // Handle tags
+        if (!empty($product_data['tags'])) {
+            $this->set_product_tags($product_id, $product_data['tags']);
+        }
+        
+        // Handle images (featured + gallery)
+        if (!empty($product_data['images'])) {
+            $this->handle_product_images($product_id, $product_data);
+        }
+        
+        return array(
+            'action' => 'created',
+            'product_id' => $product_id,
+            'missing_id' => false // NEW: Always false for created products since they never had an ID
+        );
+    }
+    
+    /**
+     * Update existing WooCommerce product
+     */
+    private function update_product($product, $product_data) {
+        // Update basic data
+        $product->set_name($product_data['name']);
+        
+        if (!empty($product_data['description'])) {
+            $product->set_description($product_data['description']);
+        }
+        
+        if (!empty($product_data['short_description'])) {
+            $product->set_short_description($product_data['short_description']);
+        }
+		
+		// Update SKU if provided
+		if (!empty($product_data['sku'])) {
+			$product->set_sku($product_data['sku']);
+		}
+		
+		if (!empty($product_data['meta_data'])) {
+			foreach ($product_data['meta_data'] as $meta) {
+				$product->update_meta_data($meta['key'], $meta['value']);
+			}
+		}
+        
+        if (!empty($product_data['regular_price'])) {
+            $product->set_regular_price($product_data['regular_price']);
+        }
+        
+        if (!empty($product_data['sale_price'])) {
+            $product->set_sale_price($product_data['sale_price']);
+        }
+		
+		// Set stock status  
+		if (!empty($product_data['stock_status'])) {
+			$product->set_stock_status($product_data['stock_status']);
+		}
+		
+		// Set backorders
+		if (!empty($product_data['backorders'])) {
+			$product->set_backorders($product_data['backorders']);
+		}
+		
+		// Set low stock threshold  
+		if (!empty($product_data['low_stock_amount'])) {
+			$product->set_low_stock_amount(intval($product_data['low_stock_amount']));
+		}
+        
+        if (!empty($product_data['weight'])) {
+            $product->set_weight($product_data['weight']);
+        }
+        
+        if (!empty($product_data['stock_quantity'])) {
+            $product->set_stock_quantity(intval($product_data['stock_quantity']));
+            $product->set_manage_stock(true);
+        }
+        
+        // Set status
+        if (!empty($product_data['status'])) {
+            $product->set_status($product_data['status']);
+        }
+        
+        // Save product
+        $product->save();
+        
+        $product_id = $product->get_id();
+        
+        // Handle categories
+        if (!empty($product_data['categories'])) {
+            $this->set_product_categories($product_id, $product_data['categories']);
+        }
+        
+        // Handle tags
+        if (!empty($product_data['tags'])) {
+            $this->set_product_tags($product_id, $product_data['tags']);
+        }
+        
+        // Handle images (featured + gallery)
+        if (!empty($product_data['images'])) {
+            $this->handle_product_images($product_id, $product_data);
+        }
+        
+        return array(
+            'action' => 'updated',
+            'product_id' => $product_id,
+            'missing_id' => false // NEW: Will be set to true in process_product_row if ID was missing
+        );
+    }
+    
+    /**
+     * Set product categories
+     * FIXED: Handle both string and array inputs
+     */
+    private function set_product_categories($product_id, $categories_data) {
+        if (empty($categories_data)) {
+            return;
+        }
+        
+        $category_ids = array();
+        
+        // FIXED: Handle array format from data builder
+        if (is_array($categories_data)) {
+            foreach ($categories_data as $category) {
+                if (isset($category['id'])) {
+                    $category_ids[] = $category['id'];
+                }
+            }
+        } else {
+            // Handle string format (legacy)
+            $categories = array_map('trim', explode(',', $categories_data));
+            foreach ($categories as $category_name) {
+                if (empty($category_name)) continue;
+                
+                // Get or create category
+                $term = get_term_by('name', $category_name, 'product_cat');
+                if (!$term) {
+                    $term_data = wp_insert_term($category_name, 'product_cat');
+                    if (!is_wp_error($term_data)) {
+                        $category_ids[] = $term_data['term_id'];
+                    }
+                } else {
+                    $category_ids[] = $term->term_id;
+                }
+            }
+        }
+        
+        if (!empty($category_ids)) {
+            wp_set_object_terms($product_id, $category_ids, 'product_cat');
+        }
+    }
+    
+    /**
+     * Set product tags
+     * FIXED: Handle both string and array inputs
+     */
+    private function set_product_tags($product_id, $tags_data) {
+        if (empty($tags_data)) {
+            return;
+        }
+        
+        $tag_names = array();
+        
+        // FIXED: Handle array format from data builder
+        if (is_array($tags_data)) {
+            foreach ($tags_data as $tag) {
+                if (isset($tag['name'])) {
+                    $tag_names[] = $tag['name'];
+                }
+            }
+        } else {
+            // Handle string format (legacy)
+            $tag_names = array_map('trim', explode(',', $tags_data));
+        }
+        
+        if (!empty($tag_names)) {
+            wp_set_object_terms($product_id, $tag_names, 'product_tag');
+        }
+    }
+    
+    /**
+     * Handle product images (featured + gallery) with proper updates/removals
+     */
+    private function handle_product_images($product_id, $product_data) {
+        // DEBUG: Log what we're receiving
+        error_log('WC_GS_Sync: Handling images for product ' . $product_id);
+        error_log('WC_GS_Sync: Image data received: ' . print_r($product_data['images'], true));
+        
+        if (!isset($product_data['images']) || !is_array($product_data['images'])) {
+            error_log('WC_GS_Sync: No images array found or not an array');
+            return;
+        }
+        
+        $new_images = $product_data['images'];
+        
+        // Get current product images
+        $product = wc_get_product($product_id);
+        $current_featured_id = get_post_thumbnail_id($product_id);
+        $current_gallery_ids = $product->get_gallery_image_ids();
+        
+        // Prepare new image data
+        $new_featured_id = null;
+        $new_gallery_ids = array();
+        
+        // Process each new image
+        foreach ($new_images as $image_data) {
+            error_log('WC_GS_Sync: Processing image: ' . print_r($image_data, true));
+            
+            $position = isset($image_data['position']) ? intval($image_data['position']) : 0;
+            
+            // Check if we have an existing ID or need to upload from URL
+            if (isset($image_data['id']) && !empty($image_data['id'])) {
+                $image_id = $image_data['id'];
+                error_log('WC_GS_Sync: Using existing image ID: ' . $image_id);
+            } elseif (isset($image_data['src']) && !empty($image_data['src'])) {
+                // Upload new image from URL
+                error_log('WC_GS_Sync: Uploading new image from URL: ' . $image_data['src']);
+                $image_id = $this->upload_image_from_url($image_data['src'], $product_id);
+                if (is_wp_error($image_id)) {
+                    error_log('WC_GS_Sync: Failed to upload image: ' . $image_id->get_error_message());
+                    continue; // Skip failed uploads
+                } else {
+                    error_log('WC_GS_Sync: Successfully uploaded image, ID: ' . $image_id);
+                }
+            } else {
+                error_log('WC_GS_Sync: No ID or src found for image');
+                continue; // Skip if no ID or URL
+            }
+            
+            // Assign to featured or gallery based on position
+            if ($position === 0) {
+                $new_featured_id = $image_id;
+                error_log('WC_GS_Sync: Set as featured image: ' . $image_id);
+            } else {
+                $new_gallery_ids[] = $image_id;
+                error_log('WC_GS_Sync: Added to gallery: ' . $image_id);
+            }
+        }
+        
+        // Update featured image
+        if ($new_featured_id) {
+            set_post_thumbnail($product_id, $new_featured_id);
+            error_log('WC_GS_Sync: Updated featured image to: ' . $new_featured_id);
+        } else {
+            // Remove featured image if none specified
+            delete_post_thumbnail($product_id);
+            error_log('WC_GS_Sync: Removed featured image');
+        }
+        
+        // Update gallery images
+        update_post_meta($product_id, '_product_image_gallery', implode(',', $new_gallery_ids));
+        error_log('WC_GS_Sync: Updated gallery images: ' . implode(',', $new_gallery_ids));
+        
+        // Clean up unused images (optional - be careful with this!)
+        $this->cleanup_unused_product_images($product_id, $current_featured_id, $current_gallery_ids, $new_featured_id, $new_gallery_ids);
+    }
+    
+    /**
+     * Clean up images that are no longer used by the product
+     */
+    private function cleanup_unused_product_images($product_id, $old_featured_id, $old_gallery_ids, $new_featured_id, $new_gallery_ids) {
+        // Get all old image IDs
+        $old_image_ids = array();
+        if ($old_featured_id) {
+            $old_image_ids[] = $old_featured_id;
+        }
+        $old_image_ids = array_merge($old_image_ids, $old_gallery_ids);
+        
+        // Get all new image IDs
+        $new_image_ids = array();
+        if ($new_featured_id) {
+            $new_image_ids[] = $new_featured_id;
+        }
+        $new_image_ids = array_merge($new_image_ids, $new_gallery_ids);
+        
+        // Find images that are no longer used
+        $unused_image_ids = array_diff($old_image_ids, $new_image_ids);
+        
+        foreach ($unused_image_ids as $unused_id) {
+            // Check if this image is used by other products before deleting
+            if (!$this->is_image_used_elsewhere($unused_id, $product_id)) {
+                // Only delete if it's not used by other products
+                wp_delete_attachment($unused_id, true);
+            }
+        }
+    }
+    
+    /**
+     * Check if an image is used by other products
+     */
+    private function is_image_used_elsewhere($image_id, $exclude_product_id) {
+        global $wpdb;
+        
+        // Check if used as featured image by other products
+        $featured_usage = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->postmeta} 
+             WHERE meta_key = '_thumbnail_id' 
+             AND meta_value = %d 
+             AND post_id != %d",
+            $image_id,
+            $exclude_product_id
+        ));
+        
+        if ($featured_usage > 0) {
+            return true;
+        }
+        
+        // Check if used in gallery by other products
+        $gallery_usage = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->postmeta} 
+             WHERE meta_key = '_product_image_gallery' 
+             AND meta_value LIKE %s 
+             AND post_id != %d",
+            '%' . $image_id . '%',
+            $exclude_product_id
+        ));
+        
+        return $gallery_usage > 0;
+    }
+
+    /**
+     * Upload image from URL
+     */
+    private function upload_image_from_url($image_url, $post_id) {
+        error_log('WC_GS_Sync: Starting image upload from URL: ' . $image_url);
+        
+        require_once(ABSPATH . 'wp-admin/includes/file.php');
+        require_once(ABSPATH . 'wp-admin/includes/media.php');
+        require_once(ABSPATH . 'wp-admin/includes/image.php');
+        
+        $temp_file = download_url($image_url);
+        
+        if (is_wp_error($temp_file)) {
+            error_log('WC_GS_Sync: Failed to download image: ' . $temp_file->get_error_message());
+            return $temp_file;
+        }
+        
+        error_log('WC_GS_Sync: Downloaded to temp file: ' . $temp_file);
+        
+        $file = array(
+            'name' => basename($image_url),
+            'tmp_name' => $temp_file,
+        );
+        
+        error_log('WC_GS_Sync: Attempting to sideload file: ' . print_r($file, true));
+        
+        $attachment_id = media_handle_sideload($file, $post_id);
+        
+        if (is_wp_error($attachment_id)) {
+            error_log('WC_GS_Sync: Failed to sideload image: ' . $attachment_id->get_error_message());
+            @unlink($temp_file);
+            return $attachment_id;
+        }
+        
+        error_log('WC_GS_Sync: Successfully uploaded image, attachment ID: ' . $attachment_id);
+        
+        return $attachment_id;
+    }
+}
+
+// Initialize the sync handler
+new WC_GS_Sync_Handler();

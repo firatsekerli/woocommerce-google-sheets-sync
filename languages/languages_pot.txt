@@ -1,0 +1,26 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR Wapiti Digital
+# This file is distributed under the same license as the WooCommerce Google Sheets Sync package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: WooCommerce Google Sheets Sync 1.0.0\n"
+"Report-Msgid-Bugs-To: https://wapiti.digital\n"
+"POT-Creation-Date: 2025-01-01 12:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: woocommerce-google-sheets-sync.php
+msgid "This plugin requires WordPress 5.0 or higher."
+msgstr ""
+
+#: woocommerce-google-sheets-sync.php
+msgid "This plugin requires PHP 7.4 or higher."
+msgstr ""

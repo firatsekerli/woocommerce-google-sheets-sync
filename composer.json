@@ -1,0 +1,26 @@
+{
+    "name": "wapiti-digital/woocommerce-google-sheets-sync",
+    "description": "Sync WooCommerce products with Google Sheets for easy bulk product management and updates.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Wapiti Digital",
+            "homepage": "https://wapiti.digital"
+        }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "google/apiclient": "^2.15"
+    },
+    "autoload": {
+        "psr-4": {
+            "WapitiDigital\\WCGoogleSheetsSync\\": "includes/"
+        }
+    },
+    "config": {
+        "vendor-dir": "vendor",
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

@@ -1,0 +1,126 @@
+/**
+ * WooCommerce Google Sheets Sync - Admin Styles
+ * 
+ * @package WC_Google_Sheets_Sync
+ */
+
+.wc-gs-sync-wrap {
+    max-width: 1200px;
+}
+
+.wc-gs-sync-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.wc-gs-sync-progress {
+    background: #f1f1f1;
+    border-radius: 10px;
+    overflow: hidden;
+    height: 20px;
+    margin: 10px 0;
+}
+
+.wc-gs-sync-progress-bar {
+    background: #0073aa;
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.wc-gs-sync-status {
+    padding: 10px;
+    border-left: 4px solid #0073aa;
+    background: #f9f9f9;
+    margin: 10px 0;
+}
+
+.wc-gs-sync-error {
+    border-left-color: #dc3232;
+    background: #ffeaea;
+}
+
+.wc-gs-sync-success {
+    border-left-color: #46b450;
+    background: #eafaf1;
+}
+
+/* Connected Sheets Styling */
+.wc-gs-connected-sheets-list {
+    display: grid;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.wc-gs-connected-sheet-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.wc-gs-sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+}
+
+.wc-gs-sheet-title {
+    margin: 0;
+    font-size: 18px;
+}
+
+.wc-gs-sheet-title a {
+    color: #1e73be;
+    text-decoration: none;
+}
+
+.wc-gs-sheet-title a:hover {
+    text-decoration: underline;
+}
+
+.wc-gs-sheet-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.wc-gs-sheet-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.wc-gs-sheet-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    flex: 1;
+}
+
+.wc-gs-meta-item {
+    font-size: 14px;
+    color: #666;
+}
+
+.wc-gs-status-enabled {
+    color: #46b450;
+    font-weight: bold;
+}
+
+.wc-gs-status-disabled {
+    color: #dc3232;
+    font-weight: bold;
+}
+
+.wc-gs-status-never {
+    color: #999;
+    font-style: italic;
+}
+
+.wc-gs-sheet-sync-actions {
+    flex-shrink: 0;
+}
