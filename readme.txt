@@ -47,6 +47,9 @@ Sold Individually, Weight, Dimension (L/W/H), Shipping Class, Purchase Note,
 Position, Allow Reviews, Upsells, Cross-sells, Category Path, Tags, Image,
 Gallery Image 01-08, Force Update, Delete, and any custom Attributes columns.
 
+For the complete list of every column with its accepted values and format, see
+`docs/SHEET_COLUMNS.md` in the plugin folder.
+
 == Installation ==
 
 1. Upload the plugin files to `/wp-content/plugins/woocommerce-google-sheets-sync/`
