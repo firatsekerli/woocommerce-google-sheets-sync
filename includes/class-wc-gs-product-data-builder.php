@@ -6,6 +6,11 @@
  * @package WC_Google_Sheets_Sync
  */
 
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 class WC_GS_Product_Data_Builder {
     
     /**

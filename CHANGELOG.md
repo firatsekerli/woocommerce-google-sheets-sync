@@ -12,12 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refresh tokens) to `debug.log`.
 - Add capability checks (`manage_woocommerce`) to the remove-sheet, disconnect,
   and configure-sheet save actions, which previously relied on a nonce alone.
-- Move the remove-sheet and disconnect handlers to an early `admin_init` hook so
-  capability/nonce checks and redirects run before any output.
+- Move the remove-sheet, disconnect, and configure-sheet save handlers to early
+  `admin_init` hooks so capability/nonce checks and redirects run before output
+  (the configure-sheet save previously redirected after render).
+- Add OAuth CSRF protection: pass a `state` nonce on the auth URL and verify it
+  on the callback.
 - Add nonce verification to the sync-progress AJAX endpoint (and send it from JS).
-- Guard and `wp_unslash()` request inputs (nonces, sheet ids, OAuth code/error),
-  use `wp_safe_redirect()`, and escape previously unescaped output (auth error
-  message, dynamic admin URLs).
+- SSRF protection on image imports via `wp_http_validate_url()` (blocks
+  localhost / internal IPs).
+- Never re-render the saved Google Client Secret into the settings HTML; keep the
+  stored value when the field is left blank.
+- Remove the Google access token, connected sheets, and leftover job/state
+  options on uninstall; add the direct-access guard to the data-builder class.
+- Guard and `wp_unslash()` request inputs (nonces, sheet ids, OAuth code/error/
+  state), use `wp_safe_redirect()`, and escape previously unescaped output (auth
+  error message, dynamic admin URLs).
 
 ### Fixed
 - Attribute column headers that sanitize to the same slug (e.g. `WS` and `W&S`

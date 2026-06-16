@@ -10,28 +10,31 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Capability gate (the menu already restricts this page; defensive check here too)
+if (!current_user_can('manage_woocommerce')) {
+    wp_die(__('Insufficient permissions', 'wc-google-sheets-sync'));
+}
+
 // Get sheet ID from URL
 $sheet_id = isset($_GET['sheet_id']) ? sanitize_text_field(wp_unslash($_GET['sheet_id'])) : '';
-
-if (empty($sheet_id)) {
-    wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet'));
-    exit;
-}
 
 // Initialize Google API
 $google_api = new WC_GS_Google_Sheets_API();
 
-// Check authentication
-if (!$google_api->is_authenticated()) {
-    wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync'));
-    exit;
+// NOTE: The save action, authentication redirect and empty-id redirect are
+// handled before any output in WC_GS_Admin::handle_configure_sheet(). The guards
+// below are defensive and render inline messages (output has already started here,
+// so we cannot redirect).
+if (empty($sheet_id) || !$google_api->is_authenticated()) {
+    echo '<div class="wrap"><div class="notice notice-error"><p>' . esc_html__('Unable to load this sheet. Please return to the dashboard and try again.', 'wc-google-sheets-sync') . '</p></div></div>';
+    return;
 }
 
 // Get sheet information
 $sheet_info = $google_api->get_sheet_info($sheet_id);
 if (is_wp_error($sheet_info)) {
-    wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet&error=' . urlencode($sheet_info->get_error_message())));
-    exit;
+    echo '<div class="wrap"><div class="notice notice-error"><p>' . esc_html($sheet_info->get_error_message()) . '</p></div></div>';
+    return;
 }
 
 // Get sheet data for preview (first 10 rows, extended column range)
@@ -47,45 +50,6 @@ foreach ($headers as $index => $header) {
         $filtered_headers[] = $header;
         $column_indices[] = $index;
     }
-}
-
-// Handle form submission
-if ($_POST && isset($_POST['action']) && $_POST['action'] === 'save_sheet_config') {
-    // Verify capability
-    if (!current_user_can('manage_woocommerce')) {
-        wp_die(__('Insufficient permissions', 'wc-google-sheets-sync'));
-    }
-
-    // Verify nonce
-    $config_nonce = isset($_POST['wc_gs_config_nonce']) ? sanitize_text_field(wp_unslash($_POST['wc_gs_config_nonce'])) : '';
-    if (!wp_verify_nonce($config_nonce, 'wc_gs_sheet_config')) {
-        wp_die(__('Security check failed', 'wc-google-sheets-sync'));
-    }
-    
-    // Preserve created_at / last_synced when editing an existing connection
-    $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
-    $existing = isset($connected_sheets[$sheet_id]) ? $connected_sheets[$sheet_id] : array();
-
-    // Save sheet configuration
-    $sheet_config = array(
-        'sheet_id' => $sheet_id,
-        'sheet_title' => $sheet_info['title'],
-        'sheet_url' => $sheet_info['url'],
-        'sheet_tab' => isset($_POST['sheet_tab']) ? sanitize_text_field(wp_unslash($_POST['sheet_tab'])) : '',
-        'auto_sync_enabled' => isset($_POST['auto_sync_enabled']),
-        'created_at' => isset($existing['created_at']) ? $existing['created_at'] : current_time('mysql'),
-        'last_synced' => isset($existing['last_synced']) ? $existing['last_synced'] : null,
-    );
-
-    // Add or update this sheet
-    $connected_sheets[$sheet_id] = $sheet_config;
-
-    // Save to database
-    update_option('wc_gs_sync_connected_sheets', $connected_sheets);
-    
-    // Redirect with success message
-    wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&sheet_connected=1'));
-    exit;
 }
 
 // Load existing configuration (if editing) to pre-fill the form

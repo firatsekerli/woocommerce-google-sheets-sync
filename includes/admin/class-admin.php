@@ -20,6 +20,7 @@ class WC_GS_Admin {
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         add_action('admin_init', array($this, 'handle_oauth_callback'));
         add_action('admin_init', array($this, 'handle_dashboard_actions'));
+        add_action('admin_init', array($this, 'handle_configure_sheet_save'));
         
         // Initialize settings
         require_once WC_GS_SYNC_PLUGIN_PATH . 'includes/admin/class-settings.php';
@@ -121,6 +122,13 @@ class WC_GS_Admin {
         }
         
         if (isset($_GET['code'])) {
+            // CSRF protection: verify the OAuth "state" nonce we set on the auth URL
+            $state = isset($_GET['state']) ? sanitize_text_field(wp_unslash($_GET['state'])) : '';
+            if (!wp_verify_nonce($state, 'wc_gs_oauth_state')) {
+                wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&auth_error=' . urlencode(__('Invalid authentication state. Please try connecting again.', 'wc-google-sheets-sync'))));
+                exit;
+            }
+
             // Handle successful authorization
             $code = sanitize_text_field(wp_unslash($_GET['code']));
             $result = $this->google_api->handle_auth_callback($code);
@@ -189,6 +197,70 @@ class WC_GS_Admin {
             wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&disconnected=1'));
             exit;
         }
+    }
+
+    /**
+     * Handle the "Connect This Sheet" save before any output so the redirect
+     * works and capability/nonce checks run early.
+     */
+    public function handle_configure_sheet_save() {
+        if (!isset($_GET['page']) || $_GET['page'] !== 'wc-google-sheets-sync') {
+            return;
+        }
+        if (!isset($_GET['action']) || $_GET['action'] !== 'configure-sheet') {
+            return;
+        }
+        if (!isset($_POST['action']) || $_POST['action'] !== 'save_sheet_config') {
+            return;
+        }
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die(__('Insufficient permissions', 'wc-google-sheets-sync'));
+        }
+
+        $nonce = isset($_POST['wc_gs_config_nonce']) ? sanitize_text_field(wp_unslash($_POST['wc_gs_config_nonce'])) : '';
+        if (!wp_verify_nonce($nonce, 'wc_gs_sheet_config')) {
+            wp_die(__('Security check failed', 'wc-google-sheets-sync'));
+        }
+
+        $sheet_id = isset($_GET['sheet_id']) ? sanitize_text_field(wp_unslash($_GET['sheet_id'])) : '';
+        if ($sheet_id === '' && isset($_POST['sheet_id'])) {
+            $sheet_id = sanitize_text_field(wp_unslash($_POST['sheet_id']));
+        }
+        if ($sheet_id === '') {
+            wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet'));
+            exit;
+        }
+
+        if (!$this->google_api->is_authenticated()) {
+            wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync'));
+            exit;
+        }
+
+        $sheet_info = $this->google_api->get_sheet_info($sheet_id);
+        if (is_wp_error($sheet_info)) {
+            wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet&error=' . urlencode($sheet_info->get_error_message())));
+            exit;
+        }
+
+        // Preserve created_at / last_synced when editing an existing connection
+        $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
+        $existing = isset($connected_sheets[$sheet_id]) ? $connected_sheets[$sheet_id] : array();
+
+        $connected_sheets[$sheet_id] = array(
+            'sheet_id'          => $sheet_id,
+            'sheet_title'       => $sheet_info['title'],
+            'sheet_url'         => $sheet_info['url'],
+            'sheet_tab'         => isset($_POST['sheet_tab']) ? sanitize_text_field(wp_unslash($_POST['sheet_tab'])) : '',
+            'auto_sync_enabled' => isset($_POST['auto_sync_enabled']),
+            'created_at'        => isset($existing['created_at']) ? $existing['created_at'] : current_time('mysql'),
+            'last_synced'       => isset($existing['last_synced']) ? $existing['last_synced'] : null,
+        );
+
+        update_option('wc_gs_sync_connected_sheets', $connected_sheets);
+
+        wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&sheet_connected=1'));
+        exit;
     }
     
     /**

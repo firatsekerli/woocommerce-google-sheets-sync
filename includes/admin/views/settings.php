@@ -42,8 +42,9 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
             <tr>
                 <th scope="row"><?php _e('Google Client Secret', 'wc-google-sheets-sync'); ?></th>
                 <td>
-                    <input type="password" name="google_client_secret" value="<?php echo esc_attr($options['google_client_secret']); ?>" class="regular-text" />
-                    <p class="description"><?php _e('Enter your Google API Client Secret', 'wc-google-sheets-sync'); ?></p>
+                    <input type="password" name="google_client_secret" value="" autocomplete="new-password" class="regular-text"
+                           placeholder="<?php echo !empty($options['google_client_secret']) ? esc_attr__('•••••••• (saved)', 'wc-google-sheets-sync') : ''; ?>" />
+                    <p class="description"><?php _e('Enter your Google API Client Secret. Leave blank to keep the currently saved secret.', 'wc-google-sheets-sync'); ?></p>
                 </td>
             </tr>
         </table>

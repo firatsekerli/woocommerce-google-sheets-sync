@@ -88,7 +88,11 @@ class WC_GS_Google_Sheets_API {
         if (!$this->client) {
             return false;
         }
-        
+
+        // CSRF protection: pass a nonce as the OAuth "state" and verify it on
+        // the callback so a forged callback can't link an arbitrary account.
+        $this->client->setState(wp_create_nonce('wc_gs_oauth_state'));
+
         return $this->client->createAuthUrl();
     }
     

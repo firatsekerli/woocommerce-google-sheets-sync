@@ -91,7 +91,9 @@ class WC_GS_Settings {
         if (isset($input['google_client_id'])) {
             $output['google_client_id'] = sanitize_text_field($input['google_client_id']);
         }
-        if (isset($input['google_client_secret'])) {
+        // Only update the secret when a new value is entered; a blank field keeps
+        // the saved secret (the field is never pre-filled with the stored value).
+        if (isset($input['google_client_secret']) && trim($input['google_client_secret']) !== '') {
             $output['google_client_secret'] = sanitize_text_field($input['google_client_secret']);
         }
         if (isset($input['batch_size'])) {

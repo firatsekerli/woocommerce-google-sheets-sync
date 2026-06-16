@@ -2030,11 +2030,18 @@ class WC_GS_Sync_Handler {
      */
     private function upload_image_from_url($image_url, $post_id) {
         error_log('WC_GS_Sync: Starting image upload from URL: ' . $image_url);
-        
+
+        // SSRF protection: only allow well-formed http(s) URLs that pass WP's
+        // safe-URL validation (blocks localhost / internal IPs by default).
+        if (!wp_http_validate_url($image_url)) {
+            error_log('WC_GS_Sync: Rejected unsafe image URL: ' . $image_url);
+            return new WP_Error('invalid_image_url', 'Image URL is not allowed');
+        }
+
         require_once(ABSPATH . 'wp-admin/includes/file.php');
         require_once(ABSPATH . 'wp-admin/includes/media.php');
         require_once(ABSPATH . 'wp-admin/includes/image.php');
-        
+
         $temp_file = download_url($image_url);
         
         if (is_wp_error($temp_file)) {
