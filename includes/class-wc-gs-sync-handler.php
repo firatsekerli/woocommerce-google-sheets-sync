@@ -273,7 +273,8 @@ class WC_GS_Sync_Handler {
             'sync_status' => array('Sync Status', 'sync_status', 'Status'),
             'sync_error' => array('Sync Error', 'sync_error', 'Error'),
             'last_synced' => array('Last Synced', 'last_synced', 'Last Updated', 'Synced At'),
-			'delete' => array('Delete', 'delete', 'Remove', 'Delete Product') // NEW: Add this line
+			'delete' => array('Delete', 'delete', 'Remove', 'Delete Product'), // NEW: Add this line
+			'force_update' => array('Force Update', 'force_update', 'Force')
         );
         
         foreach ($field_mappings as $field => $possible_headers) {
@@ -577,6 +578,21 @@ class WC_GS_Sync_Handler {
      * inline loop so it can run across separate background batches).
      */
     private function process_row_into_state($headers, $row, $google_sheet_row, &$state) {
+        // One-time action columns: queue the Delete / Force Update cells for
+        // clearing whenever they are set, regardless of the row's outcome. This
+        // prevents them re-triggering on the next sync (e.g. a stale Delete=yes
+        // throwing "product not found").
+        $delete_idx = array_search('Delete', $headers);
+        if ($delete_idx !== false && isset($row[$delete_idx])
+            && in_array(strtolower(trim((string) $row[$delete_idx])), array('yes', 'y', '1', 'true', 'delete'), true)) {
+            $state['clear_delete'][] = $google_sheet_row;
+        }
+        $force_idx = array_search('Force Update', $headers);
+        if ($force_idx !== false && isset($row[$force_idx])
+            && in_array(strtolower(trim((string) $row[$force_idx])), array('yes', 'y', '1', 'true', 'force'), true)) {
+            $state['clear_force_update'][] = $google_sheet_row;
+        }
+
         try {
             $result = $this->process_product_row($headers, $row, $google_sheet_row);
 
@@ -643,7 +659,10 @@ class WC_GS_Sync_Handler {
             // Preserve row-number keys by using + instead of array_merge
             $all_write_backs = $state['created_products'] + $state['missing_ids'];
 
-            if (!empty($all_write_backs) || !empty($state['sku_write_backs']) || !empty($state['quantity_write_backs']) || !empty($state['gtin_write_backs']) || !empty($state['sync_results'])) {
+            $clear_delete = isset($state['clear_delete']) ? $state['clear_delete'] : array();
+            $clear_force_update = isset($state['clear_force_update']) ? $state['clear_force_update'] : array();
+
+            if (!empty($all_write_backs) || !empty($state['sku_write_backs']) || !empty($state['quantity_write_backs']) || !empty($state['gtin_write_backs']) || !empty($state['sync_results']) || !empty($clear_delete) || !empty($clear_force_update)) {
                 $this->write_sync_results_back(
                     $sync_id,
                     $sheet_config,
@@ -652,7 +671,9 @@ class WC_GS_Sync_Handler {
                     $state['sku_write_backs'],
                     $state['quantity_write_backs'],
                     $state['gtin_write_backs'],
-                    $state['sync_results']
+                    $state['sync_results'],
+                    $clear_delete,
+                    $clear_force_update
                 );
             }
 
@@ -666,6 +687,7 @@ class WC_GS_Sync_Handler {
                     'deleted'      => (int) $state['deleted'],
                     'skipped'      => (int) $state['skipped'],
                     'error_count'  => count($state['errors']),
+                    'errors'       => array_slice($state['errors'], 0, 50),
                     'total'        => isset($job['total']) ? (int) $job['total'] : 0,
                     'completed_at' => current_time('mysql'),
                 );
@@ -701,16 +723,18 @@ class WC_GS_Sync_Handler {
             'gtin_write_backs' => array(),
             'quantity_write_backs' => array(),
             'sync_results' => array(),
+            'clear_delete' => array(),       // rows whose Delete cell should be cleared
+            'clear_force_update' => array(), // rows whose Force Update cell should be cleared
         );
     }
     
     /**
      * NEW: Write sync results back to Google Sheets (IDs, status, errors, timestamps)
      */
-    private function write_sync_results_back($sync_id, $sheet_config, $headers, $product_ids, $sku_write_backs, $quantity_write_backs, $gtin_write_backs, $sync_results) {
+    private function write_sync_results_back($sync_id, $sheet_config, $headers, $product_ids, $sku_write_backs, $quantity_write_backs, $gtin_write_backs, $sync_results, $clear_delete = array(), $clear_force_update = array()) {
         error_log('WC_GS_Sync: *** WRITE-BACK FUNCTION CALLED - NEW CODE RUNNING ***');
         
-        if (empty($product_ids) && empty($sku_write_backs) && empty($quantity_write_backs) && empty($sync_results)) {
+        if (empty($product_ids) && empty($sku_write_backs) && empty($quantity_write_backs) && empty($sync_results) && empty($clear_delete) && empty($clear_force_update)) {
 			error_log('WC_GS_Sync: No data to write back');
 			return;
 		}
@@ -851,7 +875,28 @@ class WC_GS_Sync_Handler {
                 
                 error_log('WC_GS_Sync: Prepared updates for row ' . $row_number . ' - Status: ' . $result['status'] . ', Product ID: ' . ($product_ids[$row_number] ?? 'none'));
             }
-            
+
+            // Clear one-time action columns (Delete / Force Update) so they don't
+            // re-trigger on the next sync (e.g. a stale Delete=yes throwing errors).
+            if (isset($columns['delete'])) {
+                foreach (array_unique($clear_delete) as $row_number) {
+                    if ($row_number < 2) { continue; }
+                    $updates[] = array(
+                        'range' => $sheet_config['sheet_tab'] . '!' . $columns['delete']['letter'] . $row_number,
+                        'values' => array(array('')),
+                    );
+                }
+            }
+            if (isset($columns['force_update'])) {
+                foreach (array_unique($clear_force_update) as $row_number) {
+                    if ($row_number < 2) { continue; }
+                    $updates[] = array(
+                        'range' => $sheet_config['sheet_tab'] . '!' . $columns['force_update']['letter'] . $row_number,
+                        'values' => array(array('')),
+                    );
+                }
+            }
+
             if (empty($updates)) {
                 error_log('WC_GS_Sync: No valid updates after filtering - all rows were invalid');
                 return;

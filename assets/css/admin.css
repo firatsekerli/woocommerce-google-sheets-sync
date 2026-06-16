@@ -142,6 +142,30 @@
 .wc-gs-sheet-stats .wc-gs-stat-warning { background: #fcf4e6; color: #8a6116; }
 .wc-gs-sheet-stats .wc-gs-stat-error   { background: #fbeaea; color: #b32d2e; }
 
+.wc-gs-last-errors {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: #fbeaea;
+    border: 1px solid #f0c2c2;
+    border-radius: 6px;
+}
+
+.wc-gs-last-errors h4 {
+    margin: 0 0 6px;
+    color: #b32d2e;
+}
+
+.wc-gs-last-errors ul {
+    margin: 0;
+    padding-left: 18px;
+    list-style: disc;
+}
+
+.wc-gs-last-errors li {
+    color: #6f2b2b;
+    margin-bottom: 3px;
+}
+
 .wc-gs-sheet-sync-actions {
     flex-shrink: 0;
 }
