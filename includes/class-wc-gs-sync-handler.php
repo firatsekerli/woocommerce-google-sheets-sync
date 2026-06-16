@@ -427,7 +427,10 @@ class WC_GS_Sync_Handler {
             'current_step' => 'Reading data from Google Sheets...',
         ));
 
+        $t_read = microtime(true);
         $sheet_data = $this->get_sheet_data($sheet_config);
+        $read_ms = (int) round((microtime(true) - $t_read) * 1000);
+        error_log('WC_GS_Timing: sheet read = ' . $read_ms . 'ms');
 
         if (is_wp_error($sheet_data)) {
             $this->update_sync_progress($sync_id, array(
@@ -453,11 +456,14 @@ class WC_GS_Sync_Handler {
 
         // Persist the job payload so each background batch can pick up where the
         // previous one left off (options, not transients, for durability).
+        // enqueued_at / read_ms are used to measure queue-dispatch latency.
         update_option('wc_gs_sync_job_' . $sync_id, array(
             'sheet_config' => $sheet_config,
             'headers' => $headers,
             'rows' => $rows,
             'total' => $total,
+            'read_ms' => $read_ms,
+            'enqueued_at' => microtime(true),
         ), false);
         update_option('wc_gs_sync_state_' . $sync_id, $this->get_default_sync_state(), false);
 
@@ -469,9 +475,11 @@ class WC_GS_Sync_Handler {
 
         // Kick off the first batch
         if (function_exists('as_enqueue_async_action')) {
+            error_log('WC_GS_Timing: enqueued first batch via Action Scheduler');
             as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, 0), 'wc-gs-sync');
         } else {
             // No Action Scheduler available: process inline (still batched)
+            error_log('WC_GS_Timing: Action Scheduler NOT available — processing inline');
             $this->process_sync_batch($sync_id, 0);
         }
 
@@ -530,6 +538,17 @@ class WC_GS_Sync_Handler {
 
         $batch_size = max(1, (int) $this->get_setting('batch_size', 10));
 
+        // Measure how long Action Scheduler took to actually start this job
+        // (the "Processing products..." wait the user sees).
+        if ((int) $offset === 0 && isset($job['enqueued_at'])) {
+            $dispatch_ms = (int) round((microtime(true) - $job['enqueued_at']) * 1000);
+            $state['dispatch_ms'] = $dispatch_ms;
+            $state['read_ms'] = isset($job['read_ms']) ? (int) $job['read_ms'] : 0;
+            error_log('WC_GS_Timing: queue dispatch latency (enqueue -> first batch) = ' . $dispatch_ms . 'ms');
+        }
+
+        $t_batch = microtime(true);
+
         try {
             $slice = array_slice($rows, $offset, $batch_size);
             foreach ($slice as $i => $row) {
@@ -548,6 +567,10 @@ class WC_GS_Sync_Handler {
             delete_option('wc_gs_sync_state_' . $sync_id);
             return null;
         }
+
+        $batch_ms = (int) round((microtime(true) - $t_batch) * 1000);
+        $state['process_ms'] = (isset($state['process_ms']) ? (int) $state['process_ms'] : 0) + $batch_ms;
+        error_log('WC_GS_Timing: batch at offset ' . (int) $offset . ' processed ' . count($slice) . ' row(s) in ' . $batch_ms . 'ms');
 
         update_option('wc_gs_sync_state_' . $sync_id, $state, false);
 
@@ -664,6 +687,11 @@ class WC_GS_Sync_Handler {
         $job = get_option('wc_gs_sync_job_' . $sync_id);
         $state = get_option('wc_gs_sync_state_' . $sync_id);
 
+        $writeback_ms = 0;
+        $read_ms     = (is_array($state) && isset($state['read_ms'])) ? (int) $state['read_ms'] : 0;
+        $dispatch_ms = (is_array($state) && isset($state['dispatch_ms'])) ? (int) $state['dispatch_ms'] : 0;
+        $process_ms  = (is_array($state) && isset($state['process_ms'])) ? (int) $state['process_ms'] : 0;
+
         if (is_array($job) && is_array($state)) {
             $sheet_config = $job['sheet_config'];
             $headers = $job['headers'];
@@ -675,6 +703,7 @@ class WC_GS_Sync_Handler {
             $clear_force_update = isset($state['clear_force_update']) ? $state['clear_force_update'] : array();
 
             if (!empty($all_write_backs) || !empty($state['sku_write_backs']) || !empty($state['quantity_write_backs']) || !empty($state['gtin_write_backs']) || !empty($state['sync_results']) || !empty($clear_delete) || !empty($clear_force_update)) {
+                $t_wb = microtime(true);
                 $this->write_sync_results_back(
                     $sync_id,
                     $sheet_config,
@@ -687,6 +716,7 @@ class WC_GS_Sync_Handler {
                     $clear_delete,
                     $clear_force_update
                 );
+                $writeback_ms = (int) round((microtime(true) - $t_wb) * 1000);
             }
 
             // Update last sync time + summary in the sheet config and globally
@@ -702,16 +732,31 @@ class WC_GS_Sync_Handler {
                     'errors'       => array_slice($state['errors'], 0, 50),
                     'total'        => isset($job['total']) ? (int) $job['total'] : 0,
                     'completed_at' => current_time('mysql'),
+                    'timing'       => array(
+                        'read_ms'      => $read_ms,
+                        'dispatch_ms'  => $dispatch_ms,
+                        'process_ms'   => $process_ms,
+                        'writeback_ms' => $writeback_ms,
+                    ),
                 );
                 update_option('wc_gs_sync_connected_sheets', $connected_sheets);
             }
             update_option('wc_gs_sync_last_sync_time', current_time('timestamp'));
         }
 
+        // Timing breakdown so the bottleneck is measurable instead of guessed.
+        $total_ms = $read_ms + $dispatch_ms + $process_ms + $writeback_ms;
+
+        $timing_summary = sprintf(
+            'Done in %.1fs (read %.1fs, queue wait %.1fs, process %.1fs, write-back %.1fs)',
+            $total_ms / 1000, $read_ms / 1000, $dispatch_ms / 1000, $process_ms / 1000, $writeback_ms / 1000
+        );
+        error_log('WC_GS_Timing: ' . $timing_summary);
+
         $this->update_sync_progress($sync_id, array(
             'status' => 'completed',
             'progress' => 100,
-            'current_step' => 'Sync completed successfully!',
+            'current_step' => 'Sync completed! ' . $timing_summary,
             'completed_at' => current_time('mysql'),
         ));
 
@@ -737,6 +782,9 @@ class WC_GS_Sync_Handler {
             'sync_results' => array(),
             'clear_delete' => array(),       // rows whose Delete cell should be cleared
             'clear_force_update' => array(), // rows whose Force Update cell should be cleared
+            'read_ms' => 0,                  // timing: Google Sheets read
+            'dispatch_ms' => 0,              // timing: queue dispatch latency
+            'process_ms' => 0,               // timing: row processing (all batches)
         );
     }
     

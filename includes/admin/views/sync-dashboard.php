@@ -241,6 +241,23 @@ if (isset($_GET['sheet_limit'])) {
             ?>
         </p>
 
+        <?php
+        $tm = (isset($lr['timing']) && is_array($lr['timing'])) ? $lr['timing'] : null;
+        if ($tm):
+            $tm_total = (int) (($tm['read_ms'] ?? 0) + ($tm['dispatch_ms'] ?? 0) + ($tm['process_ms'] ?? 0) + ($tm['writeback_ms'] ?? 0));
+        ?>
+        <p class="description wc-gs-timing">
+            <?php printf(
+                esc_html__('Timing: %1$ss total — read %2$ss, queue wait %3$ss, process %4$ss, write-back %5$ss', 'wc-google-sheets-sync'),
+                number_format($tm_total / 1000, 1),
+                number_format((int) ($tm['read_ms'] ?? 0) / 1000, 1),
+                number_format((int) ($tm['dispatch_ms'] ?? 0) / 1000, 1),
+                number_format((int) ($tm['process_ms'] ?? 0) / 1000, 1),
+                number_format((int) ($tm['writeback_ms'] ?? 0) / 1000, 1)
+            ); ?>
+        </p>
+        <?php endif; ?>
+
         <div class="wc-gs-sync-stats">
             <div class="wc-gs-stat-item">
                 <span class="wc-gs-stat-label"><?php _e('Processed:', 'wc-google-sheets-sync'); ?></span>
