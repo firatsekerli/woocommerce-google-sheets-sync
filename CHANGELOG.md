@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Update bundled Composer dependencies to clear all known advisories
+  (`composer audit` reports none): guzzlehttp/psr7 -> 2.11.1, firebase/php-jwt
+  -> 7.1.0, google/apiclient -> 2.19.3. phpseclib and paragonie are no longer
+  required and were dropped from the vendor tree.
 - Fix admin-context XSS in the sync progress UI: per-row error messages (which
   embed sheet-derived values like SKU/GTIN/name) were injected into the DOM as
   HTML in `sync.js`. They are now rendered with `.text()`.
