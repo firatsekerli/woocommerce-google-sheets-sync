@@ -284,15 +284,16 @@ class WC_GS_Admin {
             return;
         }
 
-        // Main tabbed screen: Sheets dashboard + Settings
+        // Main tabbed screen: Sheets dashboard + Settings + Help
         $tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'dashboard';
-        if (!in_array($tab, array('dashboard', 'settings'), true)) {
+        if (!in_array($tab, array('dashboard', 'settings', 'help'), true)) {
             $tab = 'dashboard';
         }
 
         $tabs = array(
             'dashboard' => __('Sheets', 'wc-google-sheets-sync'),
             'settings'  => __('Settings', 'wc-google-sheets-sync'),
+            'help'      => __('Help', 'wc-google-sheets-sync'),
         );
 
         echo '<div class="wrap">';
@@ -308,6 +309,8 @@ class WC_GS_Admin {
 
         if ('settings' === $tab) {
             $this->settings_page();
+        } elseif ('help' === $tab) {
+            include WC_GS_SYNC_PLUGIN_PATH . 'includes/admin/views/help.php';
         } else {
             $this->render_dashboard_page();
         }
