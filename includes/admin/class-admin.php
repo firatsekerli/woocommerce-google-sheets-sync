@@ -60,16 +60,7 @@ class WC_GS_Admin {
             array(),
             WC_GS_SYNC_VERSION
         );
-        
-        // Load existing admin.js
-        wp_enqueue_script(
-            'wc-gs-sync-admin',
-            WC_GS_SYNC_PLUGIN_URL . 'assets/js/admin.js',
-            array('jquery'),
-            WC_GS_SYNC_VERSION,
-            true
-        );
-        
+
         // Load sync functionality
         wp_enqueue_script(
             'wc-gs-sync-handler',
@@ -78,13 +69,7 @@ class WC_GS_Admin {
             WC_GS_SYNC_VERSION,
             true
         );
-        
-        // FIXED: Localize both scripts with correct variable names
-        wp_localize_script('wc-gs-sync-admin', 'wcGsSyncAjax', array(
-            'ajaxurl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('wc_gs_sync_nonce')
-        ));
-        
+
         // Add global variables for sync.js
         wp_localize_script('wc-gs-sync-handler', 'wc_gs_sync_ajax', array(
             'ajaxurl' => admin_url('admin-ajax.php'),

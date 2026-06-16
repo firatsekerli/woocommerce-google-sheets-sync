@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Combine the separate "Google Sheets Sync" and "Sheets Settings" admin menu
   entries into a single page with **Sheets** and **Settings** tabs.
+- Remove the non-functional "Start New Sync" button (syncing is per-sheet via
+  "Sync Now") and retire the unused `admin.js` scaffolding. Its stub
+  `saveSettings` handler called `preventDefault()` on the settings form, which
+  would have blocked saving once the settings moved onto the combined page.
 
 ### Security
 - Update bundled Composer dependencies to clear all known advisories

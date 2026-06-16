@@ -94,11 +94,7 @@ if (isset($_GET['disconnected'])) {
     <?php if ($is_authenticated): ?>
     <div class="wc-gs-sync-actions">
         <h2><?php _e('Actions', 'wc-google-sheets-sync'); ?></h2>
-        <button type="button" class="button button-primary wc-gs-sync-start">
-            <?php _e('Start New Sync', 'wc-google-sheets-sync'); ?>
-        </button>
-        
-        <a href="<?php echo admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet'); ?>" class="button">
+        <a href="<?php echo esc_url(admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet')); ?>" class="button button-primary">
             <?php _e('Connect New Sheet', 'wc-google-sheets-sync'); ?>
         </a>
     </div>
