@@ -100,26 +100,36 @@ class WC_GS_Sync_Handler {
      * Cron callback: run a sync for every connected sheet.
      */
     public function run_scheduled_sync() {
+        error_log('WC_GS_AutoSync: scheduled run fired');
+
         $options = get_option('wc_gs_sync_options', array());
         if (empty($options['auto_sync_enabled'])) {
+            error_log('WC_GS_AutoSync: aborted — global Auto Sync is OFF');
             return;
         }
 
         $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
         if (empty($connected_sheets) || !is_array($connected_sheets)) {
+            error_log('WC_GS_AutoSync: aborted — no connected sheets');
             return;
         }
 
+        $ran = 0;
         foreach ($connected_sheets as $sheet_id => $sheet_config) {
             if (!is_array($sheet_config)) {
                 continue;
             }
             // Only include sheets that opted in to automatic syncing
             if (empty($sheet_config['auto_sync_enabled'])) {
+                error_log('WC_GS_AutoSync: skipping sheet "' . (isset($sheet_config['sheet_title']) ? $sheet_config['sheet_title'] : $sheet_id) . '" — per-sheet Auto Sync not enabled');
                 continue;
             }
+            error_log('WC_GS_AutoSync: starting sync for sheet "' . (isset($sheet_config['sheet_title']) ? $sheet_config['sheet_title'] : $sheet_id) . '"');
             $this->start_background_sync($sheet_config);
+            $ran++;
         }
+
+        error_log('WC_GS_AutoSync: scheduled run finished — synced ' . $ran . ' sheet(s)');
     }
 
     /**
