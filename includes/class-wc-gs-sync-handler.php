@@ -2140,7 +2140,11 @@ class WC_GS_Sync_Handler {
         }
         
         error_log('WC_GS_Sync: Successfully uploaded image, attachment ID: ' . $attachment_id);
-        
+
+        // Record the source URL so future syncs reuse this attachment instead of
+        // re-downloading the same external image every time.
+        update_post_meta($attachment_id, '_wc_gs_source_url', $image_url);
+
         return $attachment_id;
     }
 }

@@ -350,9 +350,24 @@ class WC_GS_Product_Data_Builder {
     private function get_media_id_if_exists($image_url) {
         if (!$image_url) return null;
 
-        // Get filename from URL
+        // Fast path: match by the source URL we stored when the image was first
+        // imported, so re-syncs reuse the existing attachment instead of
+        // re-downloading externally hosted images on every sync.
+        $by_source = get_posts(array(
+            'post_type'      => 'attachment',
+            'post_status'    => 'inherit',
+            'fields'         => 'ids',
+            'meta_key'       => '_wc_gs_source_url',
+            'meta_value'     => $image_url,
+            'posts_per_page' => 1,
+        ));
+        if (!empty($by_source)) {
+            return $by_source[0];
+        }
+
+        // Fallback (legacy): match by filename, then confirm the local URL.
         $filename = basename(parse_url($image_url, PHP_URL_PATH));
-        
+
         // Search for existing media
         $existing_media = get_posts(array(
             'post_type' => 'attachment',
