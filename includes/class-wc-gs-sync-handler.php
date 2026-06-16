@@ -1214,9 +1214,30 @@ class WC_GS_Sync_Handler {
 			}
 			error_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL GTIN to use: "' . $final_gtin . '"');
 			
+			// Change detection: skip the update when the data we would apply matches
+			// what was applied last time (unless Force Update is set, or the row
+			// still needs its ID written back). Unchanged products are then reported
+			// as skipped instead of updated, and are not needlessly re-saved.
+			$new_hash = $this->compute_product_hash($product_data);
+			$old_hash = $existing_product->get_meta('_wc_gs_data_hash');
+
+			if (!$force_update && !$had_empty_id && $old_hash !== '' && $old_hash === $new_hash) {
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - no changes, skipping update');
+				return array(
+					'action'       => 'skipped',
+					'product_id'   => $found_product_id,
+					'missing_id'   => false,
+					'row_number'   => $row_number,
+					'match_method' => $match_method,
+				);
+			}
+
 			// Now update the product with sheet data
 			$result = $this->update_product($existing_product, $product_data);
-			
+
+			// Persist the data hash so the next unchanged sync can skip this row
+			update_post_meta($result['product_id'], '_wc_gs_data_hash', $new_hash);
+
 			// Set basic result data
 			$result['missing_id'] = $had_empty_id;
 			$result['row_number'] = $row_number;
@@ -1250,6 +1271,11 @@ class WC_GS_Sync_Handler {
             $result = $this->create_product($product_data);
             $result['row_number'] = $row_number; // TRACK THE ROW NUMBER
             $result['match_method'] = 'new';
+
+            // Store the data hash so the next unchanged sync can skip this product
+            if (!empty($result['product_id'])) {
+                update_post_meta($result['product_id'], '_wc_gs_data_hash', $this->compute_product_hash($product_data));
+            }
             
             error_log('WC_GS_Sync: Row ' . $row_number . ' - Create result: action=' . $result['action'] . ', product_id=' . $result['product_id']);
 			
@@ -1263,6 +1289,33 @@ class WC_GS_Sync_Handler {
         }
     }
 	
+	/**
+	 * Compute a stable hash of the meaningful product data, used to detect when a
+	 * row is unchanged so the sync can skip re-saving it. Excludes volatile fields
+	 * (ID, delete flag, type).
+	 */
+	private function compute_product_hash($product_data) {
+		$keys = array(
+			'name', 'description', 'short_description', 'sku',
+			'regular_price', 'sale_price', 'date_on_sale_from', 'date_on_sale_to',
+			'status', 'catalog_visibility', 'visibility', 'post_password', 'featured',
+			'tax_status', 'tax_class',
+			'stock_status', 'manage_stock', 'stock_quantity', 'backorders',
+			'sold_individually', 'low_stock_amount',
+			'weight', 'dimensions', 'shipping_class',
+			'purchase_note', 'menu_order', 'reviews_allowed',
+			'upsells', 'cross_sells',
+			'categories', 'tags', 'attributes', 'meta_data', 'images',
+		);
+
+		$subset = array();
+		foreach ($keys as $k) {
+			$subset[$k] = isset($product_data[$k]) ? $product_data[$k] : null;
+		}
+
+		return md5(wp_json_encode($subset));
+	}
+
 	/**
 	 * NEW: Check if product should be deleted
 	 */

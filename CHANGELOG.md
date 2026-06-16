@@ -60,6 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error message, dynamic admin URLs).
 
 ### Fixed
+- Detect unchanged rows and skip them: an existing product is only updated when
+  the data actually changed (tracked via a `_wc_gs_data_hash` on the product), so
+  re-syncing an unchanged sheet now reports those rows as Skipped (not Updated)
+  and avoids re-saving them. Force Update still forces an update.
+- Stop re-downloading images on every sync (match imported media by source URL).
 - Treat a row whose `Sync Status` is `deleted` as a tombstone: it is skipped and
   left untouched on subsequent syncs, so a deleted product is not recreated.
   Clear the `deleted` value to import the row again.
