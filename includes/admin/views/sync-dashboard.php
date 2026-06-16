@@ -45,10 +45,6 @@ if (isset($_GET['disconnected'])) {
 ?>
 
 <div class="wrap wc-gs-sync-wrap">
-    <div class="wc-gs-sync-header">
-        <h1><?php _e('Google Sheets Sync Dashboard', 'wc-google-sheets-sync'); ?></h1>
-    </div>
-    
     <div class="wc-gs-sync-status">
         <h2><?php _e('Google Connection Status', 'wc-google-sheets-sync'); ?></h2>
         <?php if ($is_authenticated && $user_info): ?>
@@ -87,7 +83,7 @@ if (isset($_GET['disconnected'])) {
                     <p class="description">
                         <?php printf(
                             __('Please configure your Google API credentials in %s first.', 'wc-google-sheets-sync'),
-                            '<a href="' . admin_url('admin.php?page=wc-google-sheets-settings') . '">' . __('Settings', 'wc-google-sheets-sync') . '</a>'
+                            '<a href="' . esc_url(admin_url('admin.php?page=wc-google-sheets-sync&tab=settings')) . '">' . __('Settings', 'wc-google-sheets-sync') . '</a>'
                         ); ?>
                     </p>
                 <?php endif; ?>

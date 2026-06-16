@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Combine the separate "Google Sheets Sync" and "Sheets Settings" admin menu
+  entries into a single page with **Sheets** and **Settings** tabs.
+
 ### Security
 - Update bundled Composer dependencies to clear all known advisories
   (`composer audit` reports none): guzzlehttp/psr7 -> 2.11.1, firebase/php-jwt

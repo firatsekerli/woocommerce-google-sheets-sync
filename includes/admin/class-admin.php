@@ -35,7 +35,7 @@ class WC_GS_Admin {
      * Add admin menu
      */
     public function add_admin_menu() {
-        // Main sync page
+        // Single combined page (Sheets dashboard + Settings tabs)
         add_submenu_page(
             'woocommerce',
             __('Google Sheets Sync', 'wc-google-sheets-sync'),
@@ -43,16 +43,6 @@ class WC_GS_Admin {
             'manage_woocommerce',
             'wc-google-sheets-sync',
             array($this, 'admin_page')
-        );
-        
-        // Settings page
-        add_submenu_page(
-            'woocommerce',
-            __('Google Sheets Settings', 'wc-google-sheets-sync'),
-            __('Sheets Settings', 'wc-google-sheets-sync'),
-            'manage_woocommerce',
-            'wc-google-sheets-settings',
-            array($this, 'settings_page')
         );
     }
     
@@ -267,19 +257,44 @@ class WC_GS_Admin {
      * Admin page callback - WITH ROUTING LOGIC
      */
     public function admin_page() {
-        // Handle different actions
-        $action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : '';
-        
-        switch ($action) {
-            case 'add-sheet':
-                $this->render_add_sheet_page();
-                break;
-            case 'configure-sheet':
-                $this->render_configure_sheet_page();
-                break;
-            default:
-                $this->render_dashboard_page();
-                break;
+        $action = isset($_GET['action']) ? sanitize_text_field(wp_unslash($_GET['action'])) : '';
+
+        // Sub-flows render their own full screen (no tabs)
+        if ($action === 'add-sheet') {
+            $this->render_add_sheet_page();
+            return;
+        }
+        if ($action === 'configure-sheet') {
+            $this->render_configure_sheet_page();
+            return;
+        }
+
+        // Main tabbed screen: Sheets dashboard + Settings
+        $tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'dashboard';
+        if (!in_array($tab, array('dashboard', 'settings'), true)) {
+            $tab = 'dashboard';
+        }
+
+        $tabs = array(
+            'dashboard' => __('Sheets', 'wc-google-sheets-sync'),
+            'settings'  => __('Settings', 'wc-google-sheets-sync'),
+        );
+
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__('Google Sheets Sync', 'wc-google-sheets-sync') . '</h1>';
+        echo '<nav class="nav-tab-wrapper wp-clearfix">';
+        foreach ($tabs as $key => $label) {
+            $url = admin_url('admin.php?page=wc-google-sheets-sync' . ('dashboard' === $key ? '' : '&tab=' . $key));
+            $active = ($tab === $key) ? ' nav-tab-active' : '';
+            echo '<a href="' . esc_url($url) . '" class="nav-tab' . esc_attr($active) . '">' . esc_html($label) . '</a>';
+        }
+        echo '</nav>';
+        echo '</div>';
+
+        if ('settings' === $tab) {
+            $this->settings_page();
+        } else {
+            $this->render_dashboard_page();
         }
     }
     

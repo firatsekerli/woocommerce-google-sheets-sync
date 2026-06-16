@@ -21,9 +21,7 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
 ?>
 
 <div class="wrap wc-gs-sync-wrap">
-    <h1><?php _e('Google Sheets Sync Settings', 'wc-google-sheets-sync'); ?></h1>
-    
-    <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" id="wc-gs-sync-settings-form">
+    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="wc-gs-sync-settings-form">
         <?php wp_nonce_field('wc_gs_sync_settings_nonce'); ?>
         <input type="hidden" name="action" value="wc_gs_sync_save_settings">
         

@@ -46,9 +46,10 @@ class WC_GS_Settings {
         $options = $this->validate_settings(wp_unslash($_POST));
         update_option('wc_gs_sync_options', $options);
         
-        // Redirect back with success message
-        wp_redirect(add_query_arg(array(
-            'page' => 'wc-google-sheets-settings',
+        // Redirect back to the Settings tab with a success message
+        wp_safe_redirect(add_query_arg(array(
+            'page' => 'wc-google-sheets-sync',
+            'tab' => 'settings',
             'message' => 'settings_saved'
         ), admin_url('admin.php')));
         exit;
