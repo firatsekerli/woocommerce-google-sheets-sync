@@ -5,6 +5,16 @@ All notable changes to **WooCommerce Google Sheets Sync** are documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Syncs now run in the background via **Action Scheduler** (bundled with
+  WooCommerce), processed in `batch_size`-sized chunks instead of inline in the
+  AJAX request. This removes PHP timeout/memory risk on large catalogs and makes
+  scheduled auto-sync reliable. Falls back to inline batched processing if
+  Action Scheduler is unavailable. Per-sync state is persisted between batches so
+  write-back still runs once at the end.
+
 ## [1.1.0]
 
 ### Added

@@ -28,6 +28,9 @@ class WC_GS_Sync_Handler {
         add_action('wc_gs_sync_scheduled_import', array($this, 'run_scheduled_sync'));
         add_action('update_option_wc_gs_sync_options', array($this, 'update_sync_schedule'), 10, 0);
         add_action('add_option_wc_gs_sync_options', array($this, 'update_sync_schedule'), 10, 0);
+
+        // Background processing: each sync runs in batches via Action Scheduler
+        add_action('wc_gs_process_sync_batch', array($this, 'process_sync_batch'), 10, 2);
     }
     
     /**
@@ -111,9 +114,7 @@ class WC_GS_Sync_Handler {
             if (!is_array($sheet_config)) {
                 continue;
             }
-            $sync_id = uniqid('cron_sync_');
-            $this->init_sync_progress($sync_id, $sheet_config);
-            $this->sync_sheet_to_woocommerce($sync_id, $sheet_config);
+            $this->start_background_sync($sheet_config);
         }
     }
 
@@ -330,14 +331,14 @@ class WC_GS_Sync_Handler {
         }
         
         $sheet_config = $connected_sheets[$sheet_id];
-        
-        // Initialize sync progress
-        $sync_id = uniqid('sync_');
-        $this->init_sync_progress($sync_id, $sheet_config);
-        
-        // Start sync process
-        $result = $this->sync_sheet_to_woocommerce($sync_id, $sheet_config);
-        
+
+        // Start the sync in the background (processed in batches via Action Scheduler)
+        $sync_id = $this->start_background_sync($sheet_config);
+
+        if (is_wp_error($sync_id)) {
+            wp_send_json_error($sync_id->get_error_message());
+        }
+
         wp_send_json_success(array(
             'sync_id' => $sync_id,
             'message' => 'Sync started successfully'
@@ -364,7 +365,7 @@ class WC_GS_Sync_Handler {
             'completed_at' => null
         );
         
-        set_transient('wc_gs_sync_progress_' . $sync_id, $progress_data, 3600); // 1 hour
+        set_transient('wc_gs_sync_progress_' . $sync_id, $progress_data, 6 * HOUR_IN_SECONDS);
     }
     
     /**
@@ -374,7 +375,7 @@ class WC_GS_Sync_Handler {
         $progress = get_transient('wc_gs_sync_progress_' . $sync_id);
         if ($progress) {
             $progress = array_merge($progress, $updates);
-            set_transient('wc_gs_sync_progress_' . $sync_id, $progress, 3600);
+            set_transient('wc_gs_sync_progress_' . $sync_id, $progress, 6 * HOUR_IN_SECONDS);
         }
     }
     
@@ -402,211 +403,286 @@ class WC_GS_Sync_Handler {
     }
     
     /**
-     * Main sync function: Sheets → WooCommerce
-     * UPDATED: Now includes write-back functionality
+     * Start a sync in the background. Reads the sheet once, stores the job, and
+     * enqueues the first batch (processed via Action Scheduler, or inline if AS
+     * is unavailable). Returns the sync id, or a WP_Error on failure.
      */
-    private function sync_sheet_to_woocommerce($sync_id, $sheet_config) {
+    private function start_background_sync($sheet_config) {
+        $sync_id = uniqid('sync_');
+        $this->init_sync_progress($sync_id, $sheet_config);
+
+        $this->update_sync_progress($sync_id, array(
+            'status' => 'reading',
+            'current_step' => 'Reading data from Google Sheets...',
+        ));
+
+        $sheet_data = $this->get_sheet_data($sheet_config);
+
+        if (is_wp_error($sheet_data)) {
+            $this->update_sync_progress($sync_id, array(
+                'status' => 'error',
+                'current_step' => 'Sync failed: ' . $sheet_data->get_error_message(),
+                'completed_at' => current_time('mysql'),
+            ));
+            return $sheet_data;
+        }
+
+        if (empty($sheet_data)) {
+            $this->update_sync_progress($sync_id, array(
+                'status' => 'error',
+                'current_step' => 'Sync failed: No data found in sheet',
+                'completed_at' => current_time('mysql'),
+            ));
+            return new WP_Error('no_data', 'No data found in sheet');
+        }
+
+        $headers = $sheet_data[0];               // Row 1 = headers
+        $rows = array_slice($sheet_data, 1);     // Remaining rows = product data
+        $total = count($rows);
+
+        // Persist the job payload so each background batch can pick up where the
+        // previous one left off (options, not transients, for durability).
+        update_option('wc_gs_sync_job_' . $sync_id, array(
+            'sheet_config' => $sheet_config,
+            'headers' => $headers,
+            'rows' => $rows,
+            'total' => $total,
+        ), false);
+        update_option('wc_gs_sync_state_' . $sync_id, $this->get_default_sync_state(), false);
+
+        $this->update_sync_progress($sync_id, array(
+            'total_rows' => $total,
+            'status' => 'processing',
+            'current_step' => 'Processing products...',
+        ));
+
+        // Kick off the first batch
+        if (function_exists('as_enqueue_async_action')) {
+            as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, 0), 'wc-gs-sync');
+        } else {
+            // No Action Scheduler available: process inline (still batched)
+            $this->process_sync_batch($sync_id, 0);
+        }
+
+        return $sync_id;
+    }
+
+    /**
+     * Action Scheduler callback: process one batch, then enqueue the next batch
+     * (or, without Action Scheduler, loop through the remaining batches inline).
+     */
+    public function process_sync_batch($sync_id, $offset) {
+        $sync_id = (string) $sync_id;
+        $offset = (int) $offset;
+        $has_as = function_exists('as_enqueue_async_action');
+
+        while (true) {
+            $next = $this->run_sync_batch($sync_id, $offset);
+
+            if ($next === null) {
+                return; // Finished (or aborted) — run_sync_batch finalized/cleaned up
+            }
+
+            if ($has_as) {
+                as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $next), 'wc-gs-sync');
+                return;
+            }
+
+            $offset = (int) $next; // Inline fallback: continue with the next batch
+        }
+    }
+
+    /**
+     * Process a single batch of rows. Returns the next offset, or null when the
+     * sync is finished (finalized) or aborted.
+     */
+    public function run_sync_batch($sync_id, $offset) {
+        $job = get_option('wc_gs_sync_job_' . $sync_id);
+        if (!is_array($job)) {
+            error_log('WC_GS_Sync: Batch aborted, job data missing for ' . $sync_id);
+            return null;
+        }
+
+        @set_time_limit(0);
+        if (function_exists('wp_raise_memory_limit')) {
+            wp_raise_memory_limit('admin');
+        }
+
+        $headers = $job['headers'];
+        $rows = $job['rows'];
+        $total = (int) $job['total'];
+
+        $state = get_option('wc_gs_sync_state_' . $sync_id);
+        if (!is_array($state)) {
+            $state = $this->get_default_sync_state();
+        }
+
+        $batch_size = max(1, (int) $this->get_setting('batch_size', 10));
+
         try {
-            // Give long-running syncs room to complete. The sync runs inline within the
-            // AJAX request, so large sheets (plus image downloads) can otherwise hit the
-            // PHP execution-time or memory limit.
-            @set_time_limit(0);
-            if (function_exists('wp_raise_memory_limit')) {
-                wp_raise_memory_limit('admin');
+            $slice = array_slice($rows, $offset, $batch_size);
+            foreach ($slice as $i => $row) {
+                // offset 0, i 0 => Google Sheets row 2 (+1 for 1-based, +1 for header)
+                $google_sheet_row = $offset + $i + 2;
+                $this->process_row_into_state($headers, $row, $google_sheet_row, $state);
             }
-
-            // Update progress: Reading sheet data
-            $this->update_sync_progress($sync_id, array(
-                'status' => 'reading',
-                'current_step' => 'Reading data from Google Sheets...'
-            ));
-            
-            // Get sheet data
-            $sheet_data = $this->get_sheet_data($sheet_config);
-            
-            if (is_wp_error($sheet_data)) {
-                throw new Exception($sheet_data->get_error_message());
-            }
-            
-            if (empty($sheet_data)) {
-                throw new Exception('No data found in sheet');
-            }
-            
-            // Parse headers and data
-            $headers = $sheet_data[0]; // Row 1 = Headers
-            $data_rows = array_slice($sheet_data, 1); // Skip header row, get all data rows
-            
-            error_log('WC_GS_Sync: Total sheet rows: ' . count($sheet_data));
-            error_log('WC_GS_Sync: Data rows extracted (after skipping header): ' . count($data_rows));
-            error_log('WC_GS_Sync: Headers: ' . print_r($headers, true));
-            
-            // Update progress with total count
-            $this->update_sync_progress($sync_id, array(
-                'total_rows' => count($data_rows),
-                'status' => 'processing',
-                'current_step' => 'Processing products...'
-            ));
-            
-            // Process each row
-            $created = 0;
-            $updated = 0;
-			$deleted = 0; // NEW: Track deletions
-            $skipped = 0;
-            $errors = array();
-            $created_products = array(); // NEW: Track created products for write-back
-            $missing_ids = array(); // NEW: Track products that need ID write-back
-			$sku_write_backs = array(); // NEW: Track SKU write-backs
-			$gtin_write_backs = array(); // NEW: Track GTIN changes for write-back
-			$quantity_write_backs = array(); // NEW: Track Quantity write-backs
-            $sync_results = array(); // NEW: Track detailed sync results for each row
-            
-            foreach ($data_rows as $row_index => $row) {
-                try {
-                    // FIXED: Proper Google Sheets row calculation
-                    // row_index 0 = first data row = Google Sheets row 2
-                    // row_index 1 = second data row = Google Sheets row 3, etc.
-                    $google_sheet_row = $row_index + 2; // +2 because: +1 for 1-based indexing, +1 to skip header
-                    
-                    error_log('WC_GS_Sync: Processing data row_index: ' . $row_index . ' -> Google Sheet row: ' . $google_sheet_row);
-                    error_log('WC_GS_Sync: Row data: ' . print_r($row, true));
-                    
-                    $result = $this->process_product_row($headers, $row, $google_sheet_row);
-                    
-                    // Track detailed results for write-back
-                    $sync_results[$google_sheet_row] = array(
-                        'status' => 'success',
-                        'action' => $result['action'],
-                        'product_id' => $result['product_id'],
-                        'error' => null
-                    );
-                    
-                    if ($result['action'] === 'created') {
-                        $created++;
-                        // Track for write-back - use the calculated Google Sheets row number
-                        $created_products[$google_sheet_row] = $result['product_id'];
-						error_log('WC_GS_Sync: Tracking created product ID ' . $result['product_id'] . ' for Google Sheets row ' . $google_sheet_row);
-						
-						// NEW: Track SKU for write-back if it was auto-generated
-						if (isset($result['generated_sku'])) {
-							$sku_write_backs[$google_sheet_row] = $result['generated_sku'];
-							error_log('WC_GS_Sync: Tracking generated SKU ' . $result['generated_sku'] . ' for Google Sheets row ' . $google_sheet_row);
-						}
-						
-                    } elseif ($result['action'] === 'updated') {
-                        $updated++;
-                        // Check if ID was missing and needs write-back
-                        if ($result['missing_id']) {
-                            $missing_ids[$google_sheet_row] = $result['product_id'];
-                            error_log('WC_GS_Sync: Tracking missing ID ' . $result['product_id'] . ' for Google Sheets row ' . $google_sheet_row);
-                        }
-						
-						// NEW: Track SKU for write-back if it was auto-generated during update
-						if (isset($result['generated_sku'])) {
-							$sku_write_backs[$google_sheet_row] = $result['generated_sku'];
-							error_log('WC_GS_Sync: Tracking generated SKU ' . $result['generated_sku'] . ' for Google Sheets row ' . $google_sheet_row);
-						}
-						
-						// NEW: Track quantity for write-back if it was preserved from WooCommerce
-						if (isset($result['generated_quantity'])) {
-							$quantity_write_backs[$google_sheet_row] = $result['generated_quantity'];
-							error_log('WC_GS_Sync: Tracking quantity ' . $result['generated_quantity'] . ' for Google Sheets row ' . $google_sheet_row);
-						}
-						
-						// NEW: Track GTIN changes
-						if (isset($result['gtin_changed']) && $result['gtin_changed']) {
-							$gtin_write_backs[$google_sheet_row] = $result['current_gtin'];
-						}
-						
-                    } elseif ($result['action'] === 'deleted') {
-						$deleted++; // NEW: Count deletions
-						error_log('WC_GS_Sync: Tracked deletion for Google Sheets row ' . $google_sheet_row);
-					} else {
-						$skipped++;
-					}
-                    
-                } catch (Exception $e) {
-                    $google_sheet_row = $row_index + 2; // Keep consistent calculation
-                    $errors[] = array(
-                        'row' => $google_sheet_row,
-                        'message' => $e->getMessage()
-                    );
-                    $skipped++;
-                    
-                    // Track error for write-back
-                    $sync_results[$google_sheet_row] = array(
-                        'status' => 'error',
-                        'action' => 'failed',
-                        'product_id' => null,
-                        'error' => $e->getMessage()
-                    );
-                    
-                    error_log('WC_GS_Sync: Error processing row ' . $google_sheet_row . ': ' . $e->getMessage());
-                }
-                
-                // Update progress
-                $processed = $row_index + 1;
-                $progress_percent = round(($processed / count($data_rows)) * 100);
-                
-                $this->update_sync_progress($sync_id, array(
-                    'progress' => $progress_percent,
-                    'processed_rows' => $processed,
-                    'created_products' => $created,
-                    'updated_products' => $updated,
-					'deleted_products' => $deleted, // NEW: Track deletions
-                    'skipped_rows' => $skipped,
-                    'errors' => $errors,
-                    'current_step' => "Processing row {$processed} of " . count($data_rows) . "..."
-                ));
-            }
-            
-            // NEW: Write product IDs back to Google Sheets (both created and missing IDs)
-            // FIXED: Use + operator instead of array_merge to preserve row number keys
-            $all_write_backs = $created_products + $missing_ids;
-            error_log('WC_GS_Sync: Created products array: ' . print_r($created_products, true));
-            error_log('WC_GS_Sync: Missing IDs array: ' . print_r($missing_ids, true));
-            error_log('WC_GS_Sync: Merged write-backs array: ' . print_r($all_write_backs, true));
-            
-			if (!empty($all_write_backs) || !empty($sku_write_backs) || !empty($quantity_write_backs) || !empty($gtin_write_backs) || !empty($sync_results)) {
-				$this->write_sync_results_back($sync_id, $sheet_config, $headers, $all_write_backs, $sku_write_backs, $quantity_write_backs, $gtin_write_backs, $sync_results);
-			}
-            
-            // Complete sync
-            $this->update_sync_progress($sync_id, array(
-                'status' => 'completed',
-                'progress' => 100,
-                'current_step' => 'Sync completed successfully!',
-                'completed_at' => current_time('mysql')
-            ));
-            
-            // Update last sync time in sheet config
-            $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
-			$connected_sheets[$sheet_config['sheet_id']]['last_synced'] = current_time('mysql');
-			update_option('wc_gs_sync_connected_sheets', $connected_sheets);
-            
-			// Track when this sync completed for future bidirectional logic
-			update_option('wc_gs_sync_last_sync_time', current_time('timestamp'));
-
-            return array(
-                'success' => true,
-                'created' => $created,
-                'updated' => $updated,
-                'skipped' => $skipped,
-                'errors' => $errors
-            );
-            
         } catch (Exception $e) {
-            // Handle sync error
+            error_log('WC_GS_Sync: Fatal batch error for ' . $sync_id . ': ' . $e->getMessage());
             $this->update_sync_progress($sync_id, array(
                 'status' => 'error',
                 'current_step' => 'Sync failed: ' . $e->getMessage(),
-                'completed_at' => current_time('mysql')
+                'completed_at' => current_time('mysql'),
             ));
-            
-            return array(
-                'success' => false,
-                'error' => $e->getMessage()
-            );
+            delete_option('wc_gs_sync_job_' . $sync_id);
+            delete_option('wc_gs_sync_state_' . $sync_id);
+            return null;
         }
+
+        update_option('wc_gs_sync_state_' . $sync_id, $state, false);
+
+        $processed = min($offset + $batch_size, $total);
+        $percent = $total > 0 ? round(($processed / $total) * 100) : 100;
+
+        $this->update_sync_progress($sync_id, array(
+            'progress' => $percent,
+            'processed_rows' => $processed,
+            'created_products' => $state['created'],
+            'updated_products' => $state['updated'],
+            'deleted_products' => $state['deleted'],
+            'skipped_rows' => $state['skipped'],
+            'errors' => $state['errors'],
+            'current_step' => "Processing row {$processed} of {$total}...",
+        ));
+
+        if ($processed >= $total) {
+            $this->finalize_sync($sync_id);
+            return null;
+        }
+
+        return $processed; // Next offset
+    }
+
+    /**
+     * Process one row into the accumulated sync state (extracted from the old
+     * inline loop so it can run across separate background batches).
+     */
+    private function process_row_into_state($headers, $row, $google_sheet_row, &$state) {
+        try {
+            $result = $this->process_product_row($headers, $row, $google_sheet_row);
+
+            $state['sync_results'][$google_sheet_row] = array(
+                'status' => 'success',
+                'action' => $result['action'],
+                'product_id' => $result['product_id'],
+                'error' => null,
+            );
+
+            if ($result['action'] === 'created') {
+                $state['created']++;
+                $state['created_products'][$google_sheet_row] = $result['product_id'];
+                if (isset($result['generated_sku'])) {
+                    $state['sku_write_backs'][$google_sheet_row] = $result['generated_sku'];
+                }
+            } elseif ($result['action'] === 'updated') {
+                $state['updated']++;
+                if (!empty($result['missing_id'])) {
+                    $state['missing_ids'][$google_sheet_row] = $result['product_id'];
+                }
+                if (isset($result['generated_sku'])) {
+                    $state['sku_write_backs'][$google_sheet_row] = $result['generated_sku'];
+                }
+                if (isset($result['generated_quantity'])) {
+                    $state['quantity_write_backs'][$google_sheet_row] = $result['generated_quantity'];
+                }
+                if (isset($result['gtin_changed']) && $result['gtin_changed']) {
+                    $state['gtin_write_backs'][$google_sheet_row] = $result['current_gtin'];
+                }
+            } elseif ($result['action'] === 'deleted') {
+                $state['deleted']++;
+            } else {
+                $state['skipped']++;
+            }
+        } catch (Exception $e) {
+            $state['errors'][] = array(
+                'row' => $google_sheet_row,
+                'message' => $e->getMessage(),
+            );
+            $state['skipped']++;
+            $state['sync_results'][$google_sheet_row] = array(
+                'status' => 'error',
+                'action' => 'failed',
+                'product_id' => null,
+                'error' => $e->getMessage(),
+            );
+            error_log('WC_GS_Sync: Error processing row ' . $google_sheet_row . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Finalize a completed sync: write results back to the sheet, stamp the
+     * completion time, mark progress complete, and clean up the job data.
+     */
+    private function finalize_sync($sync_id) {
+        $job = get_option('wc_gs_sync_job_' . $sync_id);
+        $state = get_option('wc_gs_sync_state_' . $sync_id);
+
+        if (is_array($job) && is_array($state)) {
+            $sheet_config = $job['sheet_config'];
+            $headers = $job['headers'];
+
+            // Preserve row-number keys by using + instead of array_merge
+            $all_write_backs = $state['created_products'] + $state['missing_ids'];
+
+            if (!empty($all_write_backs) || !empty($state['sku_write_backs']) || !empty($state['quantity_write_backs']) || !empty($state['gtin_write_backs']) || !empty($state['sync_results'])) {
+                $this->write_sync_results_back(
+                    $sync_id,
+                    $sheet_config,
+                    $headers,
+                    $all_write_backs,
+                    $state['sku_write_backs'],
+                    $state['quantity_write_backs'],
+                    $state['gtin_write_backs'],
+                    $state['sync_results']
+                );
+            }
+
+            // Update last sync time in the sheet config and globally
+            $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
+            if (isset($sheet_config['sheet_id']) && isset($connected_sheets[$sheet_config['sheet_id']])) {
+                $connected_sheets[$sheet_config['sheet_id']]['last_synced'] = current_time('mysql');
+                update_option('wc_gs_sync_connected_sheets', $connected_sheets);
+            }
+            update_option('wc_gs_sync_last_sync_time', current_time('timestamp'));
+        }
+
+        $this->update_sync_progress($sync_id, array(
+            'status' => 'completed',
+            'progress' => 100,
+            'current_step' => 'Sync completed successfully!',
+            'completed_at' => current_time('mysql'),
+        ));
+
+        delete_option('wc_gs_sync_job_' . $sync_id);
+        delete_option('wc_gs_sync_state_' . $sync_id);
+    }
+
+    /**
+     * The empty accumulator used to track results across background batches.
+     */
+    private function get_default_sync_state() {
+        return array(
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+            'skipped' => 0,
+            'errors' => array(),
+            'created_products' => array(),
+            'missing_ids' => array(),
+            'sku_write_backs' => array(),
+            'gtin_write_backs' => array(),
+            'quantity_write_backs' => array(),
+            'sync_results' => array(),
+        );
     }
     
     /**
