@@ -57,7 +57,16 @@ if (!empty($search_term)) {
             </a>
         </h1>
     </div>
-    
+
+    <div class="wc-gs-template-info">
+        <p><strong><?php _e('First time?', 'wc-google-sheets-sync'); ?></strong> <?php _e('Start from our template so your columns match what the sync expects. Make a copy, replace the sample rows with your products, then pick it below.', 'wc-google-sheets-sync'); ?></p>
+        <p>
+            <a href="<?php echo esc_url(WC_GS_SYNC_TEMPLATE_URL); ?>" class="button button-secondary" target="_blank" rel="noopener">
+                <?php _e('📋 Get the Google Sheet template', 'wc-google-sheets-sync'); ?>
+            </a>
+        </p>
+    </div>
+
     <!-- Search Form -->
     <div class="wc-gs-search-form">
         <form method="get" action="">

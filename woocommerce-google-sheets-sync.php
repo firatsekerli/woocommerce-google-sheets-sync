@@ -28,6 +28,9 @@ define('WC_GS_SYNC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WC_GS_SYNC_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('WC_GS_SYNC_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
+// Google Sheets template (the "/copy" endpoint prompts the user to make their own copy)
+define('WC_GS_SYNC_TEMPLATE_URL', 'https://docs.google.com/spreadsheets/d/1Qm6dMcI6C8-viF_GcPII-itRl-S63JThY1wyt2OHuRM/copy');
+
 // Include Composer autoloader
 if (file_exists(WC_GS_SYNC_PLUGIN_PATH . 'vendor/autoload.php')) {
     require_once WC_GS_SYNC_PLUGIN_PATH . 'vendor/autoload.php';

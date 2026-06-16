@@ -17,9 +17,9 @@ feature work for launch.
 - [ ] **Reconcile plugin metadata.** Plugin URI / Author URI point to
       `ultimatesubscriptions.com` while `composer.json` author is
       `wapiti-digital`. Pick the correct branding before launch.
-- [ ] **Fix or remove the "Get Template Google Sheet" button.** In
-      `configure-sheet.php` it links to `#` (dead). Point it at a real published
-      template sheet, or remove it.
+- [x] **"Get Template Google Sheet" button** now points at the real template
+      (`WC_GS_SYNC_TEMPLATE_URL`, the `/copy` link) and is shown on the add-sheet
+      screen, configure screen, and Help tab.
 - [ ] **Decide on the unused `wc_gs_sync_logs` table.** It's created on activation
       but never used (the logger was removed). Either build a sync-history view on
       it or stop creating it.

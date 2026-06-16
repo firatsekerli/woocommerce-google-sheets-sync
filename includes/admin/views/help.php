@@ -27,6 +27,11 @@ if (!defined('ABSPATH')) {
             <li><?php printf(__('Click %s to push the sheet into WooCommerce.', 'wc-google-sheets-sync'), '<strong>' . __('Sync Now', 'wc-google-sheets-sync') . '</strong>'); ?></li>
         </ol>
         <p class="description"><?php _e('Your sheet must have the column headers in row 1 and product data starting on row 2.', 'wc-google-sheets-sync'); ?></p>
+        <p>
+            <a href="<?php echo esc_url(WC_GS_SYNC_TEMPLATE_URL); ?>" class="button button-secondary" target="_blank" rel="noopener">
+                <?php _e('📋 Get the Google Sheet template', 'wc-google-sheets-sync'); ?>
+            </a>
+        </p>
     </div>
 
     <div class="wc-gs-help-card">

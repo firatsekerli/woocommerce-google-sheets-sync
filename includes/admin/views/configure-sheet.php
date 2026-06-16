@@ -181,8 +181,8 @@ $existing_auto = !empty($existing_config['auto_sync_enabled']);
         <div class="wc-gs-template-info">
             <p><strong><?php _e('Important:', 'wc-google-sheets-sync'); ?></strong> <?php _e('Your Google Sheet must use our standard template format for the sync to work properly.', 'wc-google-sheets-sync'); ?></p>
             <p>
-                <a href="#" class="button button-secondary" target="_blank">
-                    <?php _e('📋 Get Template Google Sheet', 'wc-google-sheets-sync'); ?>
+                <a href="<?php echo esc_url(WC_GS_SYNC_TEMPLATE_URL); ?>" class="button button-secondary" target="_blank" rel="noopener">
+                    <?php _e('📋 Get the Google Sheet template', 'wc-google-sheets-sync'); ?>
                 </a>
                 <span class="description"><?php _e('Copy our template and replace your data, then come back to connect it.', 'wc-google-sheets-sync'); ?></span>
             </p>
