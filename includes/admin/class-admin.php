@@ -30,7 +30,30 @@ class WC_GS_Admin {
         require_once WC_GS_SYNC_PLUGIN_PATH . 'includes/class-google-sheets-api.php';
         $this->google_api = new WC_GS_Google_Sheets_API();
     }
-    
+
+    /**
+     * Maximum number of connected sheets allowed. 0 (or negative) = unlimited.
+     *
+     * Default is unlimited, so this is a no-op until a Pro/free split filters it
+     * (e.g. the free tier hooks `wc_gs_sync_max_sheets` to return 1).
+     */
+    public static function get_max_sheets() {
+        return (int) apply_filters('wc_gs_sync_max_sheets', 0);
+    }
+
+    /**
+     * Whether the connected-sheet limit has been reached (always false when
+     * the limit is unlimited).
+     */
+    public static function sheet_limit_reached() {
+        $max = self::get_max_sheets();
+        if ($max <= 0) {
+            return false;
+        }
+        $connected = get_option('wc_gs_sync_connected_sheets', array());
+        return is_array($connected) && count($connected) >= $max;
+    }
+
     /**
      * Add admin menu
      */
@@ -221,6 +244,13 @@ class WC_GS_Admin {
         // Preserve created_at / last_synced when editing an existing connection
         $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
         $existing = isset($connected_sheets[$sheet_id]) ? $connected_sheets[$sheet_id] : array();
+
+        // Enforce the (filterable) connected-sheet limit for NEW connections only;
+        // editing an already-connected sheet is always allowed.
+        if (empty($existing) && self::sheet_limit_reached()) {
+            wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&sheet_limit=1'));
+            exit;
+        }
 
         $connected_sheets[$sheet_id] = array(
             'sheet_id'          => $sheet_id,

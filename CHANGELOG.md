@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Filterable connected-sheet limit (`wc_gs_sync_max_sheets`, default `0` =
+  unlimited) for a future Pro/free split. When a limit is set and reached,
+  connecting a new sheet is blocked server-side and the UI shows an upgrade
+  notice; editing already-connected sheets is always allowed.
+
 ### Changed
 - Combine the separate "Google Sheets Sync" and "Sheets Settings" admin menu
   entries into a single page with **Sheets** and **Settings** tabs.

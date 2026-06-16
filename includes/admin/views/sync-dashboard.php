@@ -42,6 +42,10 @@ if (isset($_GET['sheet_removed'])) {
 if (isset($_GET['disconnected'])) {
     echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('Successfully disconnected from Google Sheets.', 'wc-google-sheets-sync') . '</p></div>';
 }
+
+if (isset($_GET['sheet_limit'])) {
+    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('You have reached the maximum number of connected sheets for your plan.', 'wc-google-sheets-sync') . '</p></div>';
+}
 ?>
 
 <div class="wrap wc-gs-sync-wrap">
@@ -94,9 +98,16 @@ if (isset($_GET['disconnected'])) {
     <?php if ($is_authenticated): ?>
     <div class="wc-gs-sync-actions">
         <h2><?php _e('Actions', 'wc-google-sheets-sync'); ?></h2>
+        <?php if (WC_GS_Admin::sheet_limit_reached()): ?>
+            <button type="button" class="button button-primary" disabled>
+                <?php _e('Connect New Sheet', 'wc-google-sheets-sync'); ?>
+            </button>
+            <p class="description"><?php _e('You have reached the maximum number of connected sheets for your plan.', 'wc-google-sheets-sync'); ?></p>
+        <?php else: ?>
         <a href="<?php echo esc_url(admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet')); ?>" class="button button-primary">
             <?php _e('Connect New Sheet', 'wc-google-sheets-sync'); ?>
         </a>
+        <?php endif; ?>
     </div>
     
     <div class="wc-gs-sync-progress" style="display: none;">

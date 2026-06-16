@@ -19,9 +19,17 @@ if (!$google_api->is_authenticated()) {
     exit;
 }
 
+// Enforce the connected-sheet limit (Pro/free gate; unlimited by default)
+if (WC_GS_Admin::sheet_limit_reached()) {
+    echo '<div class="wrap wc-gs-sync-wrap"><h1>' . esc_html__('Connect Google Sheet', 'wc-google-sheets-sync') . '</h1>';
+    echo '<div class="notice notice-error"><p>' . esc_html__('You have reached the maximum number of connected sheets for your plan.', 'wc-google-sheets-sync') . '</p></div>';
+    echo '<p><a href="' . esc_url(admin_url('admin.php?page=wc-google-sheets-sync')) . '" class="button">' . esc_html__('Back to Dashboard', 'wc-google-sheets-sync') . '</a></p></div>';
+    return;
+}
+
 // Handle search
-$search_term = isset($_GET['search']) ? sanitize_text_field($_GET['search']) : '';
-$page_token = isset($_GET['page_token']) ? sanitize_text_field($_GET['page_token']) : null;
+$search_term = isset($_GET['search']) ? sanitize_text_field(wp_unslash($_GET['search'])) : '';
+$page_token = isset($_GET['page_token']) ? sanitize_text_field(wp_unslash($_GET['page_token'])) : null;
 
 // Get spreadsheets
 if (!empty($search_term)) {
