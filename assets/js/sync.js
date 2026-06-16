@@ -71,8 +71,8 @@ jQuery(document).ready(function($) {
         // Disable button and show loading
         button.prop('disabled', true).text('Starting Sync...');
         
-        // Show progress modal
-        showProgressModal();
+        // Show the inline progress panel
+        showInlineProgress();
         
         // Make AJAX request to start sync
         $.ajax({
@@ -90,13 +90,13 @@ jQuery(document).ready(function($) {
                 } else {
                     showSyncError(response.data);
                     button.prop('disabled', false).text('Sync Now');
-                    hideProgressModal();
+                    hideInlineProgress();
                 }
             },
             error: function() {
                 showSyncError('Failed to start sync. Please try again.');
                 button.prop('disabled', false).text('Sync Now');
-                hideProgressModal();
+                hideInlineProgress();
             }
         });
     }
@@ -127,14 +127,14 @@ jQuery(document).ready(function($) {
                         clearInterval(progressInterval);
                         showSyncError('Failed to get sync progress');
                         button.prop('disabled', false).text('Sync Now');
-                        hideProgressModal();
+                        hideInlineProgress();
                     }
                 },
                 error: function() {
                     clearInterval(progressInterval);
                     showSyncError('Failed to track sync progress');
                     button.prop('disabled', false).text('Sync Now');
-                    hideProgressModal();
+                    hideInlineProgress();
                 }
             });
         }, 1000); // Check every second
@@ -177,103 +177,45 @@ jQuery(document).ready(function($) {
         console.log('handleSyncComplete called with:', progressData);
         
         if (progressData.status === 'completed') {
-            // Check if there are errors FIRST
-            var hasErrors = progressData.errors && progressData.errors.length > 0;
-            
-            // DEBUG: Log error check
-            console.log('Errors found:', hasErrors, 'Error count:', progressData.errors ? progressData.errors.length : 0);
-            
             showSyncSuccess(progressData);
-            
-            if (hasErrors) {
-                // Keep modal open indefinitely if there are errors
-                showManualCloseButton();
-                console.log('Sync completed with errors - keeping modal open');
-            } else {
-                // Auto-close only if no errors
-                console.log('Sync completed without errors - auto-closing');
-                setTimeout(function() {
-                    location.reload();
-                }, 3000);
-                
-                setTimeout(function() {
-                    hideProgressModal();
-                }, 5000);
+
+            var hasErrors = progressData.errors && progressData.errors.length > 0;
+            if (!hasErrors) {
+                // Reload so the connected-sheet cards / last-run stats refresh
+                setTimeout(function() { location.reload(); }, 2000);
             }
+            // If there are errors, leave the inline panel visible so they stay on screen.
         } else {
             showSyncError('Sync failed: ' + progressData.current_step);
-            // Keep modal open for manual close on error
-            showManualCloseButton();
         }
     }
     
     /**
-     * Show progress modal
+     * Show and reset the inline progress panel (rendered in the dashboard).
      */
-    function showProgressModal() {
-        var modal = createProgressModal();
-        $('body').append(modal);
-        $('#wc-gs-sync-modal').fadeIn();
+    function showInlineProgress() {
+        var $panel = $('#wc-gs-sync-progress-panel');
+        if (!$panel.length) {
+            return;
+        }
+        $('#sync-progress-bar').css('width', '0%');
+        $('#sync-progress-text').text('0%');
+        $('#sync-current-step').text('Initializing sync...');
+        $('#sync-processed-rows, #sync-total-rows, #sync-created-products, #sync-updated-products, #sync-skipped-rows').text('0');
+        $('#sync-errors-list').empty();
+        $('#sync-errors').hide();
+        $('#sync-messages').empty();
+        $panel.show();
+        if ($panel.get(0) && $panel.get(0).scrollIntoView) {
+            $panel.get(0).scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     }
-    
+
     /**
-     * Hide progress modal
+     * Hide the inline progress panel.
      */
-    function hideProgressModal() {
-        $('#wc-gs-sync-modal').fadeOut(function() {
-            $(this).remove();
-        });
-    }
-    
-    /**
-     * Create progress modal HTML
-     */
-    function createProgressModal() {
-        return `
-            <div id="wc-gs-sync-modal" class="wc-gs-modal" style="display: none;">
-                <div class="wc-gs-modal-backdrop"></div>
-                <div class="wc-gs-modal-content">
-                    <div class="wc-gs-modal-header">
-                        <h2>Syncing Google Sheet</h2>
-                    </div>
-                    <div class="wc-gs-modal-body">
-                        <div class="wc-gs-progress-container">
-                            <div class="wc-gs-progress-bar">
-                                <div id="sync-progress-bar" class="wc-gs-progress-fill"></div>
-                                <span id="sync-progress-text" class="wc-gs-progress-text">0%</span>
-                            </div>
-                            <p id="sync-current-step" class="wc-gs-current-step">Initializing sync...</p>
-                        </div>
-                        
-                        <div class="wc-gs-sync-stats">
-                            <div class="wc-gs-stat-item">
-                                <span class="wc-gs-stat-label">Processed:</span>
-                                <span id="sync-processed-rows">0</span> / <span id="sync-total-rows">0</span>
-                            </div>
-                            <div class="wc-gs-stat-item">
-                                <span class="wc-gs-stat-label">Created:</span>
-                                <span id="sync-created-products" class="wc-gs-stat-success">0</span>
-                            </div>
-                            <div class="wc-gs-stat-item">
-                                <span class="wc-gs-stat-label">Updated:</span>
-                                <span id="sync-updated-products" class="wc-gs-stat-info">0</span>
-                            </div>
-                            <div class="wc-gs-stat-item">
-                                <span class="wc-gs-stat-label">Skipped:</span>
-                                <span id="sync-skipped-rows" class="wc-gs-stat-warning">0</span>
-                            </div>
-                        </div>
-                        
-                        <div id="sync-errors" class="wc-gs-sync-errors" style="display: none;">
-                            <h4>Errors:</h4>
-                            <ul id="sync-errors-list"></ul>
-                        </div>
-                        
-                        <div id="sync-messages" class="wc-gs-sync-messages"></div>
-                    </div>
-                </div>
-            </div>
-        `;
+    function hideInlineProgress() {
+        $('#wc-gs-sync-progress-panel').hide();
     }
     
     /**
@@ -308,177 +250,4 @@ jQuery(document).ready(function($) {
         }
     }
     
-    // Close modal when clicking backdrop
-    $(document).on('click', '.wc-gs-modal-backdrop', function() {
-        hideProgressModal();
-    });
 });
-
-// CSS for progress modal (inline for simplicity)
-var modalCSS = `
-<style>
-.wc-gs-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 100000;
-}
-
-.wc-gs-modal-backdrop {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-}
-
-.wc-gs-modal-content {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    max-width: 500px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
-.wc-gs-modal-header {
-    padding: 20px 20px 10px;
-    border-bottom: 1px solid #ddd;
-}
-
-.wc-gs-modal-header h2 {
-    margin: 0;
-    font-size: 18px;
-}
-
-.wc-gs-modal-body {
-    padding: 20px;
-}
-
-.wc-gs-progress-container {
-    margin-bottom: 20px;
-}
-
-.wc-gs-progress-bar {
-    position: relative;
-    background: #f0f0f0;
-    border-radius: 20px;
-    height: 30px;
-    overflow: hidden;
-    margin-bottom: 10px;
-}
-
-.wc-gs-progress-fill {
-    background: linear-gradient(45deg, #0073aa, #005a87);
-    height: 100%;
-    width: 0%;
-    transition: width 0.3s ease;
-    border-radius: 20px;
-}
-
-.wc-gs-progress-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-weight: bold;
-    font-size: 12px;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-}
-
-.wc-gs-current-step {
-    font-style: italic;
-    color: #666;
-    margin: 0;
-}
-
-.wc-gs-sync-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 15px;
-    padding: 15px;
-    background: #f9f9f9;
-    border-radius: 5px;
-}
-
-.wc-gs-stat-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.wc-gs-stat-label {
-    font-weight: bold;
-    color: #333;
-}
-
-.wc-gs-stat-success {
-    color: #46b450;
-    font-weight: bold;
-}
-
-.wc-gs-stat-info {
-    color: #0073aa;
-    font-weight: bold;
-}
-
-.wc-gs-stat-warning {
-    color: #ffb900;
-    font-weight: bold;
-}
-
-.wc-gs-sync-errors {
-    background: #ffeaea;
-    border: 1px solid #dc3232;
-    border-radius: 5px;
-    padding: 15px;
-    margin-bottom: 15px;
-}
-
-.wc-gs-sync-errors h4 {
-    margin: 0 0 10px 0;
-    color: #dc3232;
-}
-
-.wc-gs-sync-errors ul {
-    margin: 0;
-    padding-left: 20px;
-}
-
-.wc-gs-sync-errors li {
-    margin-bottom: 5px;
-    color: #721c24;
-}
-
-.wc-gs-sync-messages {
-    margin-top: 15px;
-}
-
-.wc-gs-sync-messages .notice {
-    padding: 10px 15px;
-    border-radius: 5px;
-    margin: 0;
-}
-
-.wc-gs-sync-messages .notice h4 {
-    margin: 0 0 5px 0;
-}
-
-.wc-gs-sync-messages .notice p {
-    margin: 0;
-}
-</style>
-`;
-
-// Inject CSS
-jQuery('head').append(modalCSS);

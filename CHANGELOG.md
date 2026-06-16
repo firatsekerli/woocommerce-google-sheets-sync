@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notice; editing already-connected sheets is always allowed.
 
 ### Changed
+- Replace the sync progress popup with an inline progress panel on the dashboard
+  (above Connected Sheets). The page refreshes on completion so the per-sheet
+  last-run stats update; on errors the panel stays visible.
 - Combine the separate "Google Sheets Sync" and "Sheets Settings" admin menu
   entries into a single page with **Sheets** and **Settings** tabs.
 - Remove the non-functional "Start New Sync" button (syncing is per-sheet via

@@ -110,12 +110,39 @@ if (isset($_GET['sheet_limit'])) {
         <?php endif; ?>
     </div>
     
-    <div class="wc-gs-sync-progress" style="display: none;">
-        <h3><?php _e('Sync Progress', 'wc-google-sheets-sync'); ?></h3>
-        <div class="wc-gs-sync-progress">
-            <div class="wc-gs-sync-progress-bar" style="width: 0%;"></div>
+    <div id="wc-gs-sync-progress-panel" class="wc-gs-sync-progress-panel" style="display: none;">
+        <h2><?php _e('Sync Progress', 'wc-google-sheets-sync'); ?></h2>
+        <div class="wc-gs-progress-bar">
+            <div id="sync-progress-bar" class="wc-gs-progress-fill"></div>
+            <span id="sync-progress-text" class="wc-gs-progress-text">0%</span>
         </div>
-        <p class="wc-gs-sync-progress-text">0%</p>
+        <p id="sync-current-step" class="wc-gs-current-step"><?php _e('Initializing sync...', 'wc-google-sheets-sync'); ?></p>
+
+        <div class="wc-gs-sync-stats">
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Processed:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-processed-rows">0</span> / <span id="sync-total-rows">0</span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Created:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-created-products" class="wc-gs-stat-success">0</span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Updated:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-updated-products" class="wc-gs-stat-info">0</span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Skipped:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-skipped-rows" class="wc-gs-stat-warning">0</span>
+            </div>
+        </div>
+
+        <div id="sync-errors" class="wc-gs-sync-errors" style="display: none;">
+            <h4><?php _e('Errors:', 'wc-google-sheets-sync'); ?></h4>
+            <ul id="sync-errors-list"></ul>
+        </div>
+
+        <div id="sync-messages" class="wc-gs-sync-messages"></div>
     </div>
     
     <div class="wc-gs-sync-sheets">

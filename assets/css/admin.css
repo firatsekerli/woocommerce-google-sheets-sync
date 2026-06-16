@@ -169,3 +169,87 @@
 .wc-gs-sheet-sync-actions {
     flex-shrink: 0;
 }
+/* Inline sync progress panel (replaces the old popup modal) */
+.wc-gs-sync-progress-panel {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-left: 4px solid #2271b1;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 16px 0;
+}
+
+.wc-gs-sync-progress-panel h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+}
+
+.wc-gs-progress-bar {
+    position: relative;
+    background: #f0f0f1;
+    border-radius: 20px;
+    height: 26px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.wc-gs-progress-fill {
+    background: linear-gradient(45deg, #2271b1, #135e96);
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: 20px;
+}
+
+.wc-gs-progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #fff;
+    font-weight: bold;
+    font-size: 12px;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.wc-gs-current-step {
+    font-style: italic;
+    color: #666;
+    margin: 0 0 12px;
+}
+
+.wc-gs-sync-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 20px;
+    padding: 12px 15px;
+    background: #f6f7f7;
+    border-radius: 5px;
+    margin-bottom: 12px;
+}
+
+.wc-gs-stat-item {
+    display: flex;
+    justify-content: space-between;
+}
+
+.wc-gs-stat-label { font-weight: bold; color: #333; }
+.wc-gs-sync-stats .wc-gs-stat-success { color: #2a8a3e; font-weight: bold; }
+.wc-gs-sync-stats .wc-gs-stat-info    { color: #0a4b78; font-weight: bold; }
+.wc-gs-sync-stats .wc-gs-stat-warning { color: #8a6116; font-weight: bold; }
+
+.wc-gs-sync-errors {
+    background: #fbeaea;
+    border: 1px solid #f0c2c2;
+    border-radius: 5px;
+    padding: 12px 15px;
+    margin-bottom: 12px;
+}
+
+.wc-gs-sync-errors h4 { margin: 0 0 8px; color: #b32d2e; }
+.wc-gs-sync-errors ul { margin: 0; padding-left: 18px; list-style: disc; }
+.wc-gs-sync-errors li { color: #6f2b2b; margin-bottom: 3px; }
+
+.wc-gs-sync-messages .notice { margin: 0; padding: 10px 14px; border-radius: 5px; }
+.wc-gs-sync-messages .notice h4 { margin: 0 0 5px; }
+.wc-gs-sync-messages .notice p { margin: 0; }
