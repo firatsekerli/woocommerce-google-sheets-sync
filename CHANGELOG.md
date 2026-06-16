@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A "Help" tab (next to Sheets and Settings) explaining how the plugin works in
+  plain language: sync direction, what writes back, special columns, why rows are
+  skipped, automatic syncing, and tips.
 - Always-visible "Sync Progress" panel below Connected Sheets showing six stats
   (Processed, Created, Updated, Deleted, Skipped, Errors) plus the failed-row
   list. It is pre-filled with the most recent run and updates live during a sync.
