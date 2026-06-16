@@ -72,4 +72,6 @@ Google Sheet.
   the sheet. Use **Force Update** to make the sheet always win.
 - **Attributes** must be placed to the right of the `Attributes` marker column. Two-word
   headers are fine (e.g. `Wine Region` becomes `pa_wine-region`); the display name keeps
-  its spaces.
+  its spaces. Headers that would otherwise produce the same slug (e.g. `WS` and `W&S`,
+  which both reduce to `ws`) are kept separate automatically — the second one gets a
+  suffixed slug (`pa_ws-2`) and is matched by its exact header text.

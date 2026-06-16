@@ -1675,44 +1675,89 @@ class WC_GS_Sync_Handler {
      * Returns the taxonomy (e.g. "pa_color") or false on failure.
      */
     private function get_or_create_global_attribute($name) {
-        $slug = wc_sanitize_taxonomy_name($name);
+        $name = trim($name);
+        if ($name === '') {
+            return false;
+        }
+
+        // Match on the attribute LABEL (the exact header text) so that two
+        // different headers that would sanitize to the same slug — e.g. "WS" and
+        // "W&S" both -> "ws" — do not collide into one attribute.
+        $existing_slugs = array();
+        foreach (wc_get_attribute_taxonomies() as $tax) {
+            if (isset($tax->attribute_label) && $tax->attribute_label === $name) {
+                $taxonomy = wc_attribute_taxonomy_name($tax->attribute_name);
+                $this->register_attribute_taxonomy($taxonomy);
+                return $taxonomy;
+            }
+            $existing_slugs[] = $tax->attribute_name;
+        }
+
+        // No attribute with this label yet — create one with a unique slug
+        $slug = $this->generate_unique_attribute_slug($name, $existing_slugs);
         if ($slug === '') {
             return false;
         }
 
+        $attribute_id = wc_create_attribute(array(
+            'name'         => $name,
+            'slug'         => $slug,
+            'type'         => 'select',
+            'order_by'     => 'menu_order',
+            'has_archives' => true,
+        ));
+
+        if (is_wp_error($attribute_id)) {
+            error_log('WC_GS_Sync: Failed to create global attribute "' . $name . '": ' . $attribute_id->get_error_message());
+            return false;
+        }
+
         $taxonomy = wc_attribute_taxonomy_name($slug);
-
-        // Create the attribute in WooCommerce's attribute table if it doesn't exist
-        if (!wc_attribute_taxonomy_id_by_name($slug)) {
-            $attribute_id = wc_create_attribute(array(
-                'name'         => $name,
-                'slug'         => $slug,
-                'type'         => 'select',
-                'order_by'     => 'menu_order',
-                'has_archives' => true,
-            ));
-
-            if (is_wp_error($attribute_id)) {
-                error_log('WC_GS_Sync: Failed to create global attribute "' . $name . '": ' . $attribute_id->get_error_message());
-                return false;
-            }
-        }
-
-        // Register the taxonomy for this request so terms can be added immediately
-        if (!taxonomy_exists($taxonomy)) {
-            register_taxonomy(
-                $taxonomy,
-                apply_filters('woocommerce_taxonomy_objects_' . $taxonomy, array('product')),
-                apply_filters('woocommerce_taxonomy_args_' . $taxonomy, array(
-                    'hierarchical' => true,
-                    'show_ui'      => false,
-                    'query_var'    => true,
-                    'rewrite'      => false,
-                ))
-            );
-        }
-
+        $this->register_attribute_taxonomy($taxonomy);
         return $taxonomy;
+    }
+
+    /**
+     * Generate a collision-free attribute slug from a header, appending -2, -3…
+     * when the base slug is already used by a different attribute. Stays within
+     * WooCommerce's 28-character attribute-slug limit.
+     */
+    private function generate_unique_attribute_slug($name, $existing_slugs) {
+        $base = wc_sanitize_taxonomy_name($name);
+        if ($base === '') {
+            return '';
+        }
+        $base = substr($base, 0, 28);
+
+        $slug = $base;
+        $i = 2;
+        while (in_array($slug, $existing_slugs, true)) {
+            $suffix = '-' . $i;
+            $slug = substr($base, 0, 28 - strlen($suffix)) . $suffix;
+            $i++;
+        }
+
+        return $slug;
+    }
+
+    /**
+     * Register an attribute taxonomy for the current request so terms can be
+     * added immediately (WooCommerce normally registers them on init).
+     */
+    private function register_attribute_taxonomy($taxonomy) {
+        if (taxonomy_exists($taxonomy)) {
+            return;
+        }
+        register_taxonomy(
+            $taxonomy,
+            apply_filters('woocommerce_taxonomy_objects_' . $taxonomy, array('product')),
+            apply_filters('woocommerce_taxonomy_args_' . $taxonomy, array(
+                'hierarchical' => true,
+                'show_ui'      => false,
+                'query_var'    => true,
+                'rewrite'      => false,
+            ))
+        );
     }
 
     /**

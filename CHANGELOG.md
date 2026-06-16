@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Attribute column headers that sanitize to the same slug (e.g. `WS` and `W&S`
+  both -> `pa_ws`) no longer collide into one attribute. Attributes are now
+  matched/created by their exact label, and a unique slug is generated
+  (`ws`, `ws-2`, …) when needed. Export resolves attributes by label too.
+  (Note: attributes that already collided on a previous version are not
+  auto-cleaned — remove the mixed attribute and re-sync.)
+
 ### Changed
 - Simplified the per-sheet configure screen: removed the non-functional
   **Sync Direction**, **Header Row**, and **Data Start Row** fields (the engine

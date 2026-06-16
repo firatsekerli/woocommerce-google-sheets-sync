@@ -128,8 +128,11 @@ class WC_GS_Product_Exporter {
             return '';
         }
 
-        $taxonomy = wc_attribute_taxonomy_name(wc_sanitize_taxonomy_name($header));
-        if (!taxonomy_exists($taxonomy)) {
+        // Resolve by attribute label (exact header text) to match how the
+        // importer creates attributes, so collision-suffixed slugs (e.g. ws-2
+        // for "W&S" alongside ws for "WS") are read from the correct taxonomy.
+        $taxonomy = $this->find_attribute_taxonomy_by_label($header);
+        if (!$taxonomy) {
             return '';
         }
 
@@ -139,6 +142,19 @@ class WC_GS_Product_Exporter {
         }
 
         return implode(', ', $terms);
+    }
+
+    /**
+     * Find the global attribute taxonomy whose label exactly matches $label.
+     * Returns the taxonomy name (e.g. "pa_ws-2") or null.
+     */
+    private function find_attribute_taxonomy_by_label($label) {
+        foreach (wc_get_attribute_taxonomies() as $tax) {
+            if (isset($tax->attribute_label) && $tax->attribute_label === $label) {
+                return wc_attribute_taxonomy_name($tax->attribute_name);
+            }
+        }
+        return null;
     }
 
     /**
