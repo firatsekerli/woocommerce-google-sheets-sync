@@ -19,6 +19,7 @@ class WC_GS_Admin {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         add_action('admin_init', array($this, 'handle_oauth_callback'));
+        add_action('admin_init', array($this, 'handle_dashboard_actions'));
         
         // Initialize settings
         require_once WC_GS_SYNC_PLUGIN_PATH . 'includes/admin/class-settings.php';
@@ -121,19 +122,71 @@ class WC_GS_Admin {
         
         if (isset($_GET['code'])) {
             // Handle successful authorization
-            $result = $this->google_api->handle_auth_callback($_GET['code']);
-            
+            $code = sanitize_text_field(wp_unslash($_GET['code']));
+            $result = $this->google_api->handle_auth_callback($code);
+
             if (is_wp_error($result)) {
                 $error_message = urlencode($result->get_error_message());
-                wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&auth_error=' . $error_message));
+                wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&auth_error=' . $error_message));
             } else {
-                wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&auth_success=1'));
+                wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&auth_success=1'));
             }
             exit;
         } elseif (isset($_GET['error'])) {
             // Handle authorization error
-            $error_message = urlencode($_GET['error']);
-            wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&auth_error=' . $error_message));
+            $error_message = urlencode(sanitize_text_field(wp_unslash($_GET['error'])));
+            wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&auth_error=' . $error_message));
+            exit;
+        }
+    }
+
+    /**
+     * Handle dashboard state-changing actions (remove sheet, disconnect) early,
+     * before any output, with capability + nonce checks. Previously these ran
+     * inside the dashboard view after output (redirects failed, checks late).
+     */
+    public function handle_dashboard_actions() {
+        if (!isset($_GET['page']) || $_GET['page'] !== 'wc-google-sheets-sync') {
+            return;
+        }
+        if (!isset($_GET['action'])) {
+            return;
+        }
+
+        $action = sanitize_text_field(wp_unslash($_GET['action']));
+
+        if ($action === 'remove-sheet') {
+            if (!current_user_can('manage_woocommerce')) {
+                wp_die(__('Insufficient permissions', 'wc-google-sheets-sync'));
+            }
+            $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field(wp_unslash($_GET['_wpnonce'])) : '';
+            if (!wp_verify_nonce($nonce, 'wc_gs_remove_sheet')) {
+                wp_die(__('Security check failed', 'wc-google-sheets-sync'));
+            }
+
+            $sheet_id = isset($_GET['sheet_id']) ? sanitize_text_field(wp_unslash($_GET['sheet_id'])) : '';
+            $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
+            if ($sheet_id !== '' && isset($connected_sheets[$sheet_id])) {
+                unset($connected_sheets[$sheet_id]);
+                update_option('wc_gs_sync_connected_sheets', $connected_sheets);
+            }
+
+            wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&sheet_removed=1'));
+            exit;
+        }
+
+        if ($action === 'disconnect') {
+            if (!current_user_can('manage_woocommerce')) {
+                wp_die(__('Insufficient permissions', 'wc-google-sheets-sync'));
+            }
+            $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field(wp_unslash($_GET['_wpnonce'])) : '';
+            if (!wp_verify_nonce($nonce, 'wc_gs_disconnect')) {
+                wp_die(__('Security check failed', 'wc-google-sheets-sync'));
+            }
+
+            $this->google_api->disconnect();
+
+            wp_safe_redirect(admin_url('admin.php?page=wc-google-sheets-sync&disconnected=1'));
             exit;
         }
     }

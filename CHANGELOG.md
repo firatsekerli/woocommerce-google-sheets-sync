@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Stop logging the OAuth authorization code and full token payload (access /
+  refresh tokens) to `debug.log`.
+- Add capability checks (`manage_woocommerce`) to the remove-sheet, disconnect,
+  and configure-sheet save actions, which previously relied on a nonce alone.
+- Move the remove-sheet and disconnect handlers to an early `admin_init` hook so
+  capability/nonce checks and redirects run before any output.
+- Add nonce verification to the sync-progress AJAX endpoint (and send it from JS).
+- Guard and `wp_unslash()` request inputs (nonces, sheet ids, OAuth code/error),
+  use `wp_safe_redirect()`, and escape previously unescaped output (auth error
+  message, dynamic admin URLs).
+
 ### Fixed
 - Attribute column headers that sanitize to the same slug (e.g. `WS` and `W&S`
   both -> `pa_ws`) no longer collide into one attribute. Attributes are now

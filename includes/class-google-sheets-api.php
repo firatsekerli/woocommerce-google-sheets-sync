@@ -109,15 +109,16 @@ class WC_GS_Google_Sheets_API {
         }
         
         try {
-            error_log('WC Google Sheets: Attempting to exchange auth code: ' . substr($auth_code, 0, 20) . '...');
-            
+            // Do not log the authorization code or the token payload — they are
+            // secrets that would otherwise end up in debug.log.
+            error_log('WC Google Sheets: Exchanging authorization code for tokens');
+
             $token = $this->client->fetchAccessTokenWithAuthCode($auth_code);
-            
-            error_log('WC Google Sheets: Token response: ' . print_r($token, true));
-            
+
             if (isset($token['error'])) {
-                error_log('WC Google Sheets: Token error: ' . $token['error_description']);
-                return new WP_Error('auth_error', $token['error_description']);
+                $description = isset($token['error_description']) ? $token['error_description'] : $token['error'];
+                error_log('WC Google Sheets: Token exchange error: ' . $description);
+                return new WP_Error('auth_error', $description);
             }
             
             // Store the access token

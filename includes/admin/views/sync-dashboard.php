@@ -27,16 +27,20 @@ if (isset($_GET['auth_success'])) {
 }
 
 if (isset($_GET['auth_error'])) {
-    $error_message = sanitize_text_field($_GET['auth_error']);
-    echo '<div class="notice notice-error is-dismissible"><p>' . sprintf(__('Google authentication failed: %s', 'wc-google-sheets-sync'), $error_message) . '</p></div>';
+    $error_message = sanitize_text_field(wp_unslash($_GET['auth_error']));
+    echo '<div class="notice notice-error is-dismissible"><p>' . sprintf(esc_html__('Google authentication failed: %s', 'wc-google-sheets-sync'), esc_html($error_message)) . '</p></div>';
 }
 
 if (isset($_GET['sheet_connected'])) {
-    echo '<div class="notice notice-success is-dismissible"><p>' . __('Google Sheet connected successfully!', 'wc-google-sheets-sync') . '</p></div>';
+    echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Google Sheet connected successfully!', 'wc-google-sheets-sync') . '</p></div>';
 }
 
 if (isset($_GET['sheet_removed'])) {
-    echo '<div class="notice notice-info is-dismissible"><p>' . __('Google Sheet connection removed.', 'wc-google-sheets-sync') . '</p></div>';
+    echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('Google Sheet connection removed.', 'wc-google-sheets-sync') . '</p></div>';
+}
+
+if (isset($_GET['disconnected'])) {
+    echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('Successfully disconnected from Google Sheets.', 'wc-google-sheets-sync') . '</p></div>';
 }
 ?>
 
@@ -60,7 +64,7 @@ if (isset($_GET['sheet_removed'])) {
                     <?php _e('Note: If you encounter permission errors when browsing sheets, you may need to reconnect to grant additional permissions.', 'wc-google-sheets-sync'); ?>
                 </p>
                 <p>
-                    <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=wc-google-sheets-sync&action=disconnect'), 'wc_gs_disconnect'); ?>" 
+                    <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=wc-google-sheets-sync&action=disconnect'), 'wc_gs_disconnect')); ?>"
                        class="button" 
                        onclick="return confirm('<?php _e('Are you sure you want to disconnect from Google?', 'wc-google-sheets-sync'); ?>')">
                         <?php _e('Disconnect from Google', 'wc-google-sheets-sync'); ?>
@@ -138,11 +142,11 @@ if (isset($_GET['sheet_removed'])) {
                                 </a>
                             </h3>
                             <div class="wc-gs-sheet-actions">
-                                <a href="<?php echo admin_url('admin.php?page=wc-google-sheets-sync&action=configure-sheet&sheet_id=' . urlencode($sheet_id)); ?>" 
+                                <a href="<?php echo esc_url(admin_url('admin.php?page=wc-google-sheets-sync&action=configure-sheet&sheet_id=' . urlencode($sheet_id))); ?>"
                                    class="button button-small">
                                     <?php _e('Edit', 'wc-google-sheets-sync'); ?>
                                 </a>
-                                <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=wc-google-sheets-sync&action=remove-sheet&sheet_id=' . urlencode($sheet_id)), 'wc_gs_remove_sheet'); ?>" 
+                                <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=wc-google-sheets-sync&action=remove-sheet&sheet_id=' . urlencode($sheet_id)), 'wc_gs_remove_sheet')); ?>" 
                                    class="button button-small button-link-delete"
                                    onclick="return confirm('<?php _e('Are you sure you want to remove this sheet connection?', 'wc-google-sheets-sync'); ?>')">
                                     <?php _e('Remove', 'wc-google-sheets-sync'); ?>
@@ -201,36 +205,10 @@ if (isset($_GET['sheet_removed'])) {
 </div>
 
 <script type="text/javascript">
-    var wc_gs_sync_nonce = '<?php echo wp_create_nonce('wc_gs_sync_nonce'); ?>';
+    var wc_gs_sync_nonce = '<?php echo esc_js(wp_create_nonce('wc_gs_sync_nonce')); ?>';
 </script>
 
 <?php
-// Handle remove sheet action
-if (isset($_GET['action']) && $_GET['action'] === 'remove-sheet' && isset($_GET['sheet_id'])) {
-    if (wp_verify_nonce($_GET['_wpnonce'], 'wc_gs_remove_sheet')) {
-        $sheet_id_to_remove = sanitize_text_field($_GET['sheet_id']);
-        $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
-        
-        if (isset($connected_sheets[$sheet_id_to_remove])) {
-            unset($connected_sheets[$sheet_id_to_remove]);
-            update_option('wc_gs_sync_connected_sheets', $connected_sheets);
-        }
-        
-        wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&sheet_removed=1'));
-        exit;
-    }
-}
-
-// Handle disconnect action
-if (isset($_GET['action']) && $_GET['action'] === 'disconnect' && wp_verify_nonce($_GET['_wpnonce'], 'wc_gs_disconnect')) {
-    $google_api->disconnect();
-    wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&disconnected=1'));
-    exit;
-}
-
-// Show disconnect success message
-if (isset($_GET['disconnected'])) {
-    echo '<script>window.location.hash = ""; window.location.search = window.location.search.replace(/[?&]disconnected=1/, "");</script>';
-    echo '<div class="notice notice-info is-dismissible"><p>' . __('Successfully disconnected from Google Sheets.', 'wc-google-sheets-sync') . '</p></div>';
-}
+// The remove-sheet and disconnect actions are handled before any output in
+// WC_GS_Admin::handle_dashboard_actions() (with capability + nonce checks).
 ?>

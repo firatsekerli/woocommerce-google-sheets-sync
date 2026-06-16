@@ -32,7 +32,7 @@ class WC_GS_Settings {
      */
     public function save_settings() {
         // Check nonce
-        $nonce = isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '';
+        $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
         if (!wp_verify_nonce($nonce, 'wc_gs_sync_settings_nonce')) {
             wp_die(__('Security check failed', 'wc-google-sheets-sync'));
         }
@@ -43,7 +43,7 @@ class WC_GS_Settings {
         }
 
         // Sanitize and persist (reuses the same validation as the Settings API path)
-        $options = $this->validate_settings($_POST);
+        $options = $this->validate_settings(wp_unslash($_POST));
         update_option('wc_gs_sync_options', $options);
         
         // Redirect back with success message

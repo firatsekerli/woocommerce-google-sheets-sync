@@ -126,7 +126,7 @@ class WC_GS_Sync_Handler {
      * AJAX: export all WooCommerce products into a connected sheet.
      */
     public function handle_export_request() {
-        $nonce = isset($_POST['nonce']) ? $_POST['nonce'] : '';
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
         if (!wp_verify_nonce($nonce, 'wc_gs_sync_nonce')) {
             wp_die('Security check failed');
         }
@@ -135,7 +135,7 @@ class WC_GS_Sync_Handler {
             wp_send_json_error('Insufficient permissions');
         }
 
-        $sheet_id = isset($_POST['sheet_id']) ? sanitize_text_field($_POST['sheet_id']) : '';
+        $sheet_id = isset($_POST['sheet_id']) ? sanitize_text_field(wp_unslash($_POST['sheet_id'])) : '';
         if (empty($sheet_id)) {
             wp_send_json_error('Invalid sheet ID');
         }
@@ -311,7 +311,7 @@ class WC_GS_Sync_Handler {
      */
     public function handle_sync_request() {
         // Verify nonce
-        $nonce = isset($_POST['nonce']) ? $_POST['nonce'] : '';
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
         if (!wp_verify_nonce($nonce, 'wc_gs_sync_nonce')) {
             wp_die('Security check failed');
         }
@@ -321,7 +321,7 @@ class WC_GS_Sync_Handler {
             wp_send_json_error('Insufficient permissions');
         }
 
-        $sheet_id = isset($_POST['sheet_id']) ? sanitize_text_field($_POST['sheet_id']) : '';
+        $sheet_id = isset($_POST['sheet_id']) ? sanitize_text_field(wp_unslash($_POST['sheet_id'])) : '';
 
         if (empty($sheet_id)) {
             wp_send_json_error('Invalid sheet ID');
@@ -387,12 +387,18 @@ class WC_GS_Sync_Handler {
      * Get sync progress for AJAX calls
      */
     public function get_sync_progress() {
+        // Verify nonce
+        $nonce = isset($_GET['nonce']) ? sanitize_text_field(wp_unslash($_GET['nonce'])) : '';
+        if (!wp_verify_nonce($nonce, 'wc_gs_sync_nonce')) {
+            wp_send_json_error('Security check failed');
+        }
+
         // Verify capability
         if (!current_user_can('manage_woocommerce')) {
             wp_send_json_error('Insufficient permissions');
         }
 
-        $sync_id = isset($_GET['sync_id']) ? sanitize_text_field($_GET['sync_id']) : '';
+        $sync_id = isset($_GET['sync_id']) ? sanitize_text_field(wp_unslash($_GET['sync_id'])) : '';
         if (empty($sync_id)) {
             wp_send_json_error('Invalid sync ID');
         }

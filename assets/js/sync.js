@@ -111,7 +111,8 @@ jQuery(document).ready(function($) {
                 type: 'GET',
                 data: {
                     action: 'wc_gs_get_sync_progress',
-                    sync_id: syncId
+                    sync_id: syncId,
+                    nonce: wc_gs_sync_nonce
                 },
                 success: function(response) {
                     if (response.success) {

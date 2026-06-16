@@ -120,7 +120,7 @@ if (!empty($search_term)) {
                                class="button button-secondary">
                                 <?php _e('View Sheet', 'wc-google-sheets-sync'); ?>
                             </a>
-                            <a href="<?php echo admin_url('admin.php?page=wc-google-sheets-sync&action=configure-sheet&sheet_id=' . $sheet->getId()); ?>" 
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=wc-google-sheets-sync&action=configure-sheet&sheet_id=' . urlencode($sheet->getId()))); ?>"
                                class="button button-primary">
                                 <?php _e('Connect This Sheet', 'wc-google-sheets-sync'); ?>
                             </a>
@@ -132,7 +132,7 @@ if (!empty($search_term)) {
             <!-- Pagination -->
             <?php if ($next_page_token && empty($search_term)): ?>
                 <div class="wc-gs-pagination">
-                    <a href="<?php echo admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet&page_token=' . $next_page_token); ?>" 
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet&page_token=' . urlencode($next_page_token))); ?>"
                        class="button">
                         <?php _e('Load More Sheets', 'wc-google-sheets-sync'); ?>
                     </a>

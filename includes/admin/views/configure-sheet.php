@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Get sheet ID from URL
-$sheet_id = isset($_GET['sheet_id']) ? sanitize_text_field($_GET['sheet_id']) : '';
+$sheet_id = isset($_GET['sheet_id']) ? sanitize_text_field(wp_unslash($_GET['sheet_id'])) : '';
 
 if (empty($sheet_id)) {
     wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&action=add-sheet'));
@@ -51,8 +51,14 @@ foreach ($headers as $index => $header) {
 
 // Handle form submission
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'save_sheet_config') {
+    // Verify capability
+    if (!current_user_can('manage_woocommerce')) {
+        wp_die(__('Insufficient permissions', 'wc-google-sheets-sync'));
+    }
+
     // Verify nonce
-    if (!wp_verify_nonce($_POST['wc_gs_config_nonce'], 'wc_gs_sheet_config')) {
+    $config_nonce = isset($_POST['wc_gs_config_nonce']) ? sanitize_text_field(wp_unslash($_POST['wc_gs_config_nonce'])) : '';
+    if (!wp_verify_nonce($config_nonce, 'wc_gs_sheet_config')) {
         wp_die(__('Security check failed', 'wc-google-sheets-sync'));
     }
     
@@ -65,7 +71,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'save_sheet_config
         'sheet_id' => $sheet_id,
         'sheet_title' => $sheet_info['title'],
         'sheet_url' => $sheet_info['url'],
-        'sheet_tab' => sanitize_text_field($_POST['sheet_tab']),
+        'sheet_tab' => isset($_POST['sheet_tab']) ? sanitize_text_field(wp_unslash($_POST['sheet_tab'])) : '',
         'auto_sync_enabled' => isset($_POST['auto_sync_enabled']),
         'created_at' => isset($existing['created_at']) ? $existing['created_at'] : current_time('mysql'),
         'last_synced' => isset($existing['last_synced']) ? $existing['last_synced'] : null,
