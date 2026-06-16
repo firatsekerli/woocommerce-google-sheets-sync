@@ -30,7 +30,7 @@ class WC_GS_Sync_Handler {
         add_action('add_option_wc_gs_sync_options', array($this, 'update_sync_schedule'), 10, 0);
 
         // Background processing: each sync runs in batches via Action Scheduler
-        add_action('wc_gs_process_sync_batch', array($this, 'process_sync_batch'), 10, 2);
+        add_action('wc_gs_process_sync_batch', array($this, 'process_sync_batch'), 10, 3);
     }
     
     /**
@@ -487,15 +487,18 @@ class WC_GS_Sync_Handler {
      * Action Scheduler callback: process one batch, then enqueue the next batch
      * (or, without Action Scheduler, loop through the remaining batches inline).
      */
-    public function process_sync_batch($sync_id, $offset) {
+    public function process_sync_batch($sync_id, $offset, $is_background = false) {
         $sync_id = (string) $sync_id;
         $offset = (int) $offset;
         $has_as = function_exists('as_enqueue_async_action');
 
-        // Process as many batches as fit within this time budget before deferring
-        // the rest to Action Scheduler. This keeps small/medium syncs fully inline
-        // (instant) and avoids one slow queue dispatch per batch on large catalogs.
-        $deadline = microtime(true) + 15;
+        // Process as many batches as fit within a time budget before deferring the
+        // rest to Action Scheduler. The inline run (the browser's sync request) uses
+        // a shorter budget so it finishes before the reverse-proxy timeout; a
+        // background (Action Scheduler) run can do more per pass, but must stay
+        // under AS's ~30s per-run limit to avoid being retried as a stalled action.
+        $budget = $is_background ? 25 : 15;
+        $deadline = microtime(true) + $budget;
 
         while (true) {
             $next = $this->run_sync_batch($sync_id, $offset);
@@ -506,9 +509,10 @@ class WC_GS_Sync_Handler {
 
             $offset = (int) $next;
 
-            // Out of inline budget: hand the remainder to the background queue.
+            // Out of budget: hand the remainder to the background queue (flagged as
+            // a background run so it uses the larger budget).
             if ($has_as && microtime(true) >= $deadline) {
-                as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $offset), 'wc-gs-sync');
+                as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $offset, 1), 'wc-gs-sync');
                 return;
             }
         }
