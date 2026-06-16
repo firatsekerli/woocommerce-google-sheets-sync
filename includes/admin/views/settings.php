@@ -55,7 +55,7 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
                 <th scope="row"><?php _e('Batch Size', 'wc-google-sheets-sync'); ?></th>
                 <td>
                     <input type="number" name="batch_size" value="<?php echo esc_attr($options['batch_size']); ?>" min="1" max="100" class="small-text" />
-                    <p class="description"><?php _e('Number of products to process in each batch (1-100)', 'wc-google-sheets-sync'); ?></p>
+                    <p class="description"><?php _e('Number of products (rows) processed per background batch. The sync runs in the background in chunks of this size; smaller values are lighter per step but take more steps. (1-100)', 'wc-google-sheets-sync'); ?></p>
                 </td>
             </tr>
             <tr>
