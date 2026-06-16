@@ -110,41 +110,6 @@ if (isset($_GET['sheet_limit'])) {
         <?php endif; ?>
     </div>
     
-    <div id="wc-gs-sync-progress-panel" class="wc-gs-sync-progress-panel" style="display: none;">
-        <h2><?php _e('Sync Progress', 'wc-google-sheets-sync'); ?></h2>
-        <div class="wc-gs-progress-bar">
-            <div id="sync-progress-bar" class="wc-gs-progress-fill"></div>
-            <span id="sync-progress-text" class="wc-gs-progress-text">0%</span>
-        </div>
-        <p id="sync-current-step" class="wc-gs-current-step"><?php _e('Initializing sync...', 'wc-google-sheets-sync'); ?></p>
-
-        <div class="wc-gs-sync-stats">
-            <div class="wc-gs-stat-item">
-                <span class="wc-gs-stat-label"><?php _e('Processed:', 'wc-google-sheets-sync'); ?></span>
-                <span id="sync-processed-rows">0</span> / <span id="sync-total-rows">0</span>
-            </div>
-            <div class="wc-gs-stat-item">
-                <span class="wc-gs-stat-label"><?php _e('Created:', 'wc-google-sheets-sync'); ?></span>
-                <span id="sync-created-products" class="wc-gs-stat-success">0</span>
-            </div>
-            <div class="wc-gs-stat-item">
-                <span class="wc-gs-stat-label"><?php _e('Updated:', 'wc-google-sheets-sync'); ?></span>
-                <span id="sync-updated-products" class="wc-gs-stat-info">0</span>
-            </div>
-            <div class="wc-gs-stat-item">
-                <span class="wc-gs-stat-label"><?php _e('Skipped:', 'wc-google-sheets-sync'); ?></span>
-                <span id="sync-skipped-rows" class="wc-gs-stat-warning">0</span>
-            </div>
-        </div>
-
-        <div id="sync-errors" class="wc-gs-sync-errors" style="display: none;">
-            <h4><?php _e('Errors:', 'wc-google-sheets-sync'); ?></h4>
-            <ul id="sync-errors-list"></ul>
-        </div>
-
-        <div id="sync-messages" class="wc-gs-sync-messages"></div>
-    </div>
-    
     <div class="wc-gs-sync-sheets">
         <h2><?php _e('Connected Sheets', 'wc-google-sheets-sync'); ?></h2>
         
@@ -163,7 +128,6 @@ if (isset($_GET['sheet_limit'])) {
                     $sheet_tab = isset($sheet_config['sheet_tab']) ? $sheet_config['sheet_tab'] : 'Unknown';
                     $auto_sync_enabled = isset($sheet_config['auto_sync_enabled']) ? $sheet_config['auto_sync_enabled'] : false;
                     $last_synced = isset($sheet_config['last_synced']) ? $sheet_config['last_synced'] : null;
-                    $last_result = (isset($sheet_config['last_result']) && is_array($sheet_config['last_result'])) ? $sheet_config['last_result'] : null;
                 ?>
                     <div class="wc-gs-connected-sheet-card">
                         <div class="wc-gs-sheet-header">
@@ -211,32 +175,6 @@ if (isset($_GET['sheet_limit'])) {
                                 </span>
                             </div>
 
-                            <?php if ($last_result): ?>
-                            <div class="wc-gs-sheet-stats">
-                                <strong><?php _e('Last run:', 'wc-google-sheets-sync'); ?></strong>
-                                <span class="wc-gs-stat"><?php printf(esc_html__('Processed: %d', 'wc-google-sheets-sync'), (int) (isset($last_result['total']) ? $last_result['total'] : 0)); ?></span>
-                                <span class="wc-gs-stat wc-gs-stat-success"><?php printf(esc_html__('Created: %d', 'wc-google-sheets-sync'), (int) $last_result['created']); ?></span>
-                                <span class="wc-gs-stat wc-gs-stat-info"><?php printf(esc_html__('Updated: %d', 'wc-google-sheets-sync'), (int) $last_result['updated']); ?></span>
-                                <span class="wc-gs-stat"><?php printf(esc_html__('Deleted: %d', 'wc-google-sheets-sync'), (int) (isset($last_result['deleted']) ? $last_result['deleted'] : 0)); ?></span>
-                                <span class="wc-gs-stat wc-gs-stat-warning"><?php printf(esc_html__('Skipped: %d', 'wc-google-sheets-sync'), (int) $last_result['skipped']); ?></span>
-                                <?php if (!empty($last_result['error_count'])): ?>
-                                <span class="wc-gs-stat wc-gs-stat-error"><?php printf(esc_html__('Errors: %d', 'wc-google-sheets-sync'), (int) $last_result['error_count']); ?></span>
-                                <?php endif; ?>
-                            </div>
-                            <?php
-                            $card_errors = (isset($last_result['errors']) && is_array($last_result['errors'])) ? $last_result['errors'] : array();
-                            if (!empty($card_errors)): ?>
-                            <div class="wc-gs-last-errors">
-                                <h4><?php _e('Errors', 'wc-google-sheets-sync'); ?></h4>
-                                <ul>
-                                    <?php foreach ($card_errors as $err): ?>
-                                        <li><?php printf(esc_html__('Row %1$s: %2$s', 'wc-google-sheets-sync'), esc_html((string) (isset($err['row']) ? $err['row'] : '?')), esc_html(isset($err['message']) ? $err['message'] : '')); ?></li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            </div>
-                            <?php endif; ?>
-                            <?php endif; ?>
-
                             <div class="wc-gs-sheet-sync-actions">
                                 <button type="button" class="button button-primary button-small wc-gs-sync-sheet"
                                         data-sheet-id="<?php echo esc_attr($sheet_id); ?>">
@@ -257,6 +195,89 @@ if (isset($_GET['sheet_limit'])) {
                 <?php _e('Use the "Connect New Sheet" button above to add Google Sheets for product syncing.', 'wc-google-sheets-sync'); ?>
             </p>
         <?php endif; ?>
+    </div>
+
+    <?php
+    // Always-visible Sync Progress panel (below Connected Sheets). Pre-filled with
+    // the most recent run; updated live by sync.js during a sync.
+    $latest_result = null;
+    $latest_time = 0;
+    if (!empty($connected_sheets) && is_array($connected_sheets)) {
+        foreach ($connected_sheets as $cfg) {
+            if (!is_array($cfg) || empty($cfg['last_result']) || !is_array($cfg['last_result'])) {
+                continue;
+            }
+            $t = isset($cfg['last_result']['completed_at']) ? strtotime($cfg['last_result']['completed_at']) : 0;
+            if ($t >= $latest_time) {
+                $latest_time = $t;
+                $latest_result = $cfg['last_result'];
+            }
+        }
+    }
+    $lr = is_array($latest_result) ? $latest_result : array();
+    $lr_total    = isset($lr['total']) ? (int) $lr['total'] : 0;
+    $lr_created  = isset($lr['created']) ? (int) $lr['created'] : 0;
+    $lr_updated  = isset($lr['updated']) ? (int) $lr['updated'] : 0;
+    $lr_deleted  = isset($lr['deleted']) ? (int) $lr['deleted'] : 0;
+    $lr_skipped  = isset($lr['skipped']) ? (int) $lr['skipped'] : 0;
+    $lr_errors   = (isset($lr['errors']) && is_array($lr['errors'])) ? $lr['errors'] : array();
+    $lr_errcount = isset($lr['error_count']) ? (int) $lr['error_count'] : count($lr_errors);
+    ?>
+    <div id="wc-gs-sync-progress-panel" class="wc-gs-sync-progress-panel">
+        <h2><?php _e('Sync Progress', 'wc-google-sheets-sync'); ?></h2>
+
+        <div id="sync-progress-bar-wrap" class="wc-gs-progress-bar" style="display: none;">
+            <div id="sync-progress-bar" class="wc-gs-progress-fill"></div>
+            <span id="sync-progress-text" class="wc-gs-progress-text">0%</span>
+        </div>
+
+        <p id="sync-current-step" class="wc-gs-current-step">
+            <?php
+            if ($latest_time) {
+                printf(esc_html__('Last sync: %s', 'wc-google-sheets-sync'), esc_html(date('M j, Y g:i A', $latest_time)));
+            } else {
+                _e('No syncs yet.', 'wc-google-sheets-sync');
+            }
+            ?>
+        </p>
+
+        <div class="wc-gs-sync-stats">
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Processed:', 'wc-google-sheets-sync'); ?></span>
+                <span><span id="sync-processed-rows"><?php echo $lr_total; ?></span> / <span id="sync-total-rows"><?php echo $lr_total; ?></span></span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Created:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-created-products" class="wc-gs-stat-success"><?php echo $lr_created; ?></span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Updated:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-updated-products" class="wc-gs-stat-info"><?php echo $lr_updated; ?></span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Deleted:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-deleted-products"><?php echo $lr_deleted; ?></span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Skipped:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-skipped-rows" class="wc-gs-stat-warning"><?php echo $lr_skipped; ?></span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label"><?php _e('Errors:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-error-count" class="wc-gs-stat-error"><?php echo $lr_errcount; ?></span>
+            </div>
+        </div>
+
+        <div id="sync-errors" class="wc-gs-sync-errors"<?php echo empty($lr_errors) ? ' style="display: none;"' : ''; ?>>
+            <h4><?php _e('Errors:', 'wc-google-sheets-sync'); ?></h4>
+            <ul id="sync-errors-list">
+                <?php foreach ($lr_errors as $err): ?>
+                    <li><?php printf(esc_html__('Row %1$s: %2$s', 'wc-google-sheets-sync'), esc_html((string) (isset($err['row']) ? $err['row'] : '?')), esc_html(isset($err['message']) ? $err['message'] : '')); ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+
+        <div id="sync-messages" class="wc-gs-sync-messages"></div>
     </div>
 
     <?php endif; ?>

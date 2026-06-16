@@ -8,19 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Persist a per-sheet "last run" summary (created/updated/deleted/skipped/errors
-  + completion time) and show it on each connected-sheet card, so the sync stats
-  are always visible — not just in the progress popup. Each card also lists the
-  failed rows (errors) from the last run.
+- Always-visible "Sync Progress" panel below Connected Sheets showing six stats
+  (Processed, Created, Updated, Deleted, Skipped, Errors) plus the failed-row
+  list. It is pre-filled with the most recent run and updates live during a sync.
 - Filterable connected-sheet limit (`wc_gs_sync_max_sheets`, default `0` =
   unlimited) for a future Pro/free split. When a limit is set and reached,
   connecting a new sheet is blocked server-side and the UI shows an upgrade
   notice; editing already-connected sheets is always allowed.
 
 ### Changed
-- Replace the sync progress popup with an inline progress panel on the dashboard
-  (above Connected Sheets). The page refreshes on completion so the per-sheet
-  last-run stats update; on errors the panel stays visible.
+- Replace the sync progress popup with the always-visible "Sync Progress" panel
+  (below Connected Sheets); during a sync it updates live, and the page refreshes
+  on completion to show the final stats.
 - Combine the separate "Google Sheets Sync" and "Sheets Settings" admin menu
   entries into a single page with **Sheets** and **Settings** tabs.
 - Remove the non-functional "Start New Sync" button (syncing is per-sheet via

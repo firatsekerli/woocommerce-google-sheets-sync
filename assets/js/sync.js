@@ -153,7 +153,9 @@ jQuery(document).ready(function($) {
         $('#sync-total-rows').text(progressData.total_rows);
         $('#sync-created-products').text(progressData.created_products);
         $('#sync-updated-products').text(progressData.updated_products);
+        $('#sync-deleted-products').text(progressData.deleted_products || 0);
         $('#sync-skipped-rows').text(progressData.skipped_rows);
+        $('#sync-error-count').text(progressData.errors ? progressData.errors.length : 0);
         
         // Update errors
         if (progressData.errors && progressData.errors.length > 0) {
@@ -198,24 +200,25 @@ jQuery(document).ready(function($) {
         if (!$panel.length) {
             return;
         }
+        // The panel is always visible; show the bar and reset the counters.
+        $('#sync-progress-bar-wrap').show();
         $('#sync-progress-bar').css('width', '0%');
         $('#sync-progress-text').text('0%');
         $('#sync-current-step').text('Initializing sync...');
-        $('#sync-processed-rows, #sync-total-rows, #sync-created-products, #sync-updated-products, #sync-skipped-rows').text('0');
+        $('#sync-processed-rows, #sync-total-rows, #sync-created-products, #sync-updated-products, #sync-deleted-products, #sync-skipped-rows, #sync-error-count').text('0');
         $('#sync-errors-list').empty();
         $('#sync-errors').hide();
         $('#sync-messages').empty();
-        $panel.show();
         if ($panel.get(0) && $panel.get(0).scrollIntoView) {
             $panel.get(0).scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 
     /**
-     * Hide the inline progress panel.
+     * Hide the live progress bar (the panel itself stays visible).
      */
     function hideInlineProgress() {
-        $('#wc-gs-sync-progress-panel').hide();
+        $('#sync-progress-bar-wrap').hide();
     }
     
     /**
