@@ -201,6 +201,7 @@ if (isset($_GET['sheet_limit'])) {
     // Always-visible Sync Progress panel (below Connected Sheets). Pre-filled with
     // the most recent run; updated live by sync.js during a sync.
     $latest_result = null;
+    $latest_title = '';
     $latest_time = 0;
     if (!empty($connected_sheets) && is_array($connected_sheets)) {
         foreach ($connected_sheets as $cfg) {
@@ -211,6 +212,7 @@ if (isset($_GET['sheet_limit'])) {
             if ($t >= $latest_time) {
                 $latest_time = $t;
                 $latest_result = $cfg['last_result'];
+                $latest_title = isset($cfg['sheet_title']) ? $cfg['sheet_title'] : '';
             }
         }
     }
@@ -225,6 +227,12 @@ if (isset($_GET['sheet_limit'])) {
     ?>
     <div id="wc-gs-sync-progress-panel" class="wc-gs-sync-progress-panel">
         <h2><?php _e('Sync Progress', 'wc-google-sheets-sync'); ?></h2>
+
+        <p id="sync-sheet-name" class="wc-gs-sync-sheet-name"><?php
+            if ($latest_title !== '') {
+                printf(esc_html__('Sheet: %s', 'wc-google-sheets-sync'), esc_html($latest_title));
+            }
+        ?></p>
 
         <div id="sync-progress-bar-wrap" class="wc-gs-progress-bar" style="display: none;">
             <div id="sync-progress-bar" class="wc-gs-progress-fill"></div>

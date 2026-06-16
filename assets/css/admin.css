@@ -253,3 +253,10 @@
 .wc-gs-sync-messages .notice { margin: 0; padding: 10px 14px; border-radius: 5px; }
 .wc-gs-sync-messages .notice h4 { margin: 0 0 5px; }
 .wc-gs-sync-messages .notice p { margin: 0; }
+
+.wc-gs-sync-sheet-name {
+    margin: -4px 0 10px;
+    font-weight: 600;
+    color: #2271b1;
+}
+.wc-gs-sync-sheet-name:empty { display: none; }

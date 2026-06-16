@@ -70,9 +70,15 @@ jQuery(document).ready(function($) {
     function startSync(sheetId, button) {
         // Disable button and show loading
         button.prop('disabled', true).text('Starting Sync...');
-        
+
+        // Show which sheet is being synced in the progress panel
+        var sheetName = button.closest('.wc-gs-connected-sheet-card').find('.wc-gs-sheet-title').text().replace(/\s+/g, ' ').trim();
+
         // Show the inline progress panel
         showInlineProgress();
+        if (sheetName) {
+            $('#sync-sheet-name').text('Sheet: ' + sheetName);
+        }
         
         // Make AJAX request to start sync
         $.ajax({
@@ -144,6 +150,9 @@ jQuery(document).ready(function($) {
      * Update progress display
      */
     function updateProgressDisplay(progressData) {
+        if (progressData.sheet_title) {
+            $('#sync-sheet-name').text('Sheet: ' + progressData.sheet_title);
+        }
         $('#sync-progress-bar').css('width', progressData.progress + '%');
         $('#sync-progress-text').text(progressData.progress + '%');
         $('#sync-current-step').text(progressData.current_step);
