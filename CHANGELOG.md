@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Persist a per-sheet "last run" summary (created/updated/deleted/skipped/errors
   + completion time) and show it on each connected-sheet card, so the sync stats
-  are always visible — not just in the progress popup. A "Last Sync Results"
-  panel below Connected Sheets shows the most recent run plus its error list.
+  are always visible — not just in the progress popup. Each card also lists the
+  failed rows (errors) from the last run.
 - Filterable connected-sheet limit (`wc_gs_sync_max_sheets`, default `0` =
   unlimited) for a future Pro/free split. When a limit is set and reached,
   connecting a new sheet is blocked server-side and the UI shows an upgrade

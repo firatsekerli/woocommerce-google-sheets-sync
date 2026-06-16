@@ -187,6 +187,7 @@ if (isset($_GET['sheet_limit'])) {
                             <?php if ($last_result): ?>
                             <div class="wc-gs-sheet-stats">
                                 <strong><?php _e('Last run:', 'wc-google-sheets-sync'); ?></strong>
+                                <span class="wc-gs-stat"><?php printf(esc_html__('Processed: %d', 'wc-google-sheets-sync'), (int) (isset($last_result['total']) ? $last_result['total'] : 0)); ?></span>
                                 <span class="wc-gs-stat wc-gs-stat-success"><?php printf(esc_html__('Created: %d', 'wc-google-sheets-sync'), (int) $last_result['created']); ?></span>
                                 <span class="wc-gs-stat wc-gs-stat-info"><?php printf(esc_html__('Updated: %d', 'wc-google-sheets-sync'), (int) $last_result['updated']); ?></span>
                                 <span class="wc-gs-stat"><?php printf(esc_html__('Deleted: %d', 'wc-google-sheets-sync'), (int) (isset($last_result['deleted']) ? $last_result['deleted'] : 0)); ?></span>
@@ -195,6 +196,18 @@ if (isset($_GET['sheet_limit'])) {
                                 <span class="wc-gs-stat wc-gs-stat-error"><?php printf(esc_html__('Errors: %d', 'wc-google-sheets-sync'), (int) $last_result['error_count']); ?></span>
                                 <?php endif; ?>
                             </div>
+                            <?php
+                            $card_errors = (isset($last_result['errors']) && is_array($last_result['errors'])) ? $last_result['errors'] : array();
+                            if (!empty($card_errors)): ?>
+                            <div class="wc-gs-last-errors">
+                                <h4><?php _e('Errors', 'wc-google-sheets-sync'); ?></h4>
+                                <ul>
+                                    <?php foreach ($card_errors as $err): ?>
+                                        <li><?php printf(esc_html__('Row %1$s: %2$s', 'wc-google-sheets-sync'), esc_html((string) (isset($err['row']) ? $err['row'] : '?')), esc_html(isset($err['message']) ? $err['message'] : '')); ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                            <?php endif; ?>
                             <?php endif; ?>
 
                             <div class="wc-gs-sheet-sync-actions">
@@ -218,59 +231,6 @@ if (isset($_GET['sheet_limit'])) {
             </p>
         <?php endif; ?>
     </div>
-
-    <?php
-    // Latest sync results panel — always visible, updates after each sync.
-    $latest_result = null;
-    $latest_title = '';
-    $latest_time = 0;
-    if (!empty($connected_sheets) && is_array($connected_sheets)) {
-        foreach ($connected_sheets as $cfg) {
-            if (!is_array($cfg) || empty($cfg['last_result']) || !is_array($cfg['last_result'])) {
-                continue;
-            }
-            $t = isset($cfg['last_result']['completed_at']) ? strtotime($cfg['last_result']['completed_at']) : 0;
-            if ($t >= $latest_time) {
-                $latest_time = $t;
-                $latest_result = $cfg['last_result'];
-                $latest_title = isset($cfg['sheet_title']) ? $cfg['sheet_title'] : '';
-            }
-        }
-    }
-    if ($latest_result):
-        $lr = $latest_result;
-        $errors = (isset($lr['errors']) && is_array($lr['errors'])) ? $lr['errors'] : array();
-    ?>
-    <div class="wc-gs-sync-sheets wc-gs-last-results">
-        <h2><?php _e('Last Sync Results', 'wc-google-sheets-sync'); ?></h2>
-        <div class="wc-gs-connected-sheet-card">
-            <p class="description">
-                <?php echo esc_html($latest_title); ?>
-                <?php if ($latest_time): ?>&mdash; <?php echo esc_html(date('M j, Y g:i A', $latest_time)); ?><?php endif; ?>
-            </p>
-            <div class="wc-gs-sheet-stats">
-                <span class="wc-gs-stat"><?php printf(esc_html__('Processed: %d', 'wc-google-sheets-sync'), (int) $lr['total']); ?></span>
-                <span class="wc-gs-stat wc-gs-stat-success"><?php printf(esc_html__('Created: %d', 'wc-google-sheets-sync'), (int) $lr['created']); ?></span>
-                <span class="wc-gs-stat wc-gs-stat-info"><?php printf(esc_html__('Updated: %d', 'wc-google-sheets-sync'), (int) $lr['updated']); ?></span>
-                <span class="wc-gs-stat"><?php printf(esc_html__('Deleted: %d', 'wc-google-sheets-sync'), (int) (isset($lr['deleted']) ? $lr['deleted'] : 0)); ?></span>
-                <span class="wc-gs-stat wc-gs-stat-warning"><?php printf(esc_html__('Skipped: %d', 'wc-google-sheets-sync'), (int) $lr['skipped']); ?></span>
-                <?php if (!empty($lr['error_count'])): ?>
-                <span class="wc-gs-stat wc-gs-stat-error"><?php printf(esc_html__('Errors: %d', 'wc-google-sheets-sync'), (int) $lr['error_count']); ?></span>
-                <?php endif; ?>
-            </div>
-            <?php if (!empty($errors)): ?>
-            <div class="wc-gs-last-errors">
-                <h4><?php _e('Errors', 'wc-google-sheets-sync'); ?></h4>
-                <ul>
-                    <?php foreach ($errors as $err): ?>
-                        <li><?php printf(esc_html__('Row %1$s: %2$s', 'wc-google-sheets-sync'), esc_html((string) (isset($err['row']) ? $err['row'] : '?')), esc_html(isset($err['message']) ? $err['message'] : '')); ?></li>
-                    <?php endforeach; ?>
-                </ul>
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-    <?php endif; ?>
 
     <?php endif; ?>
 </div>
