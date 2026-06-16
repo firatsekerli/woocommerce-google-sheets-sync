@@ -656,10 +656,19 @@ class WC_GS_Sync_Handler {
                 );
             }
 
-            // Update last sync time in the sheet config and globally
+            // Update last sync time + summary in the sheet config and globally
             $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
             if (isset($sheet_config['sheet_id']) && isset($connected_sheets[$sheet_config['sheet_id']])) {
                 $connected_sheets[$sheet_config['sheet_id']]['last_synced'] = current_time('mysql');
+                $connected_sheets[$sheet_config['sheet_id']]['last_result'] = array(
+                    'created'      => (int) $state['created'],
+                    'updated'      => (int) $state['updated'],
+                    'deleted'      => (int) $state['deleted'],
+                    'skipped'      => (int) $state['skipped'],
+                    'error_count'  => count($state['errors']),
+                    'total'        => isset($job['total']) ? (int) $job['total'] : 0,
+                    'completed_at' => current_time('mysql'),
+                );
                 update_option('wc_gs_sync_connected_sheets', $connected_sheets);
             }
             update_option('wc_gs_sync_last_sync_time', current_time('timestamp'));

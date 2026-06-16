@@ -136,6 +136,7 @@ if (isset($_GET['sheet_limit'])) {
                     $sheet_tab = isset($sheet_config['sheet_tab']) ? $sheet_config['sheet_tab'] : 'Unknown';
                     $auto_sync_enabled = isset($sheet_config['auto_sync_enabled']) ? $sheet_config['auto_sync_enabled'] : false;
                     $last_synced = isset($sheet_config['last_synced']) ? $sheet_config['last_synced'] : null;
+                    $last_result = (isset($sheet_config['last_result']) && is_array($sheet_config['last_result'])) ? $sheet_config['last_result'] : null;
                 ?>
                     <div class="wc-gs-connected-sheet-card">
                         <div class="wc-gs-sheet-header">
@@ -182,7 +183,20 @@ if (isset($_GET['sheet_limit'])) {
                                     ?>
                                 </span>
                             </div>
-                            
+
+                            <?php if ($last_result): ?>
+                            <div class="wc-gs-sheet-stats">
+                                <strong><?php _e('Last run:', 'wc-google-sheets-sync'); ?></strong>
+                                <span class="wc-gs-stat wc-gs-stat-success"><?php printf(esc_html__('Created: %d', 'wc-google-sheets-sync'), (int) $last_result['created']); ?></span>
+                                <span class="wc-gs-stat wc-gs-stat-info"><?php printf(esc_html__('Updated: %d', 'wc-google-sheets-sync'), (int) $last_result['updated']); ?></span>
+                                <span class="wc-gs-stat"><?php printf(esc_html__('Deleted: %d', 'wc-google-sheets-sync'), (int) (isset($last_result['deleted']) ? $last_result['deleted'] : 0)); ?></span>
+                                <span class="wc-gs-stat wc-gs-stat-warning"><?php printf(esc_html__('Skipped: %d', 'wc-google-sheets-sync'), (int) $last_result['skipped']); ?></span>
+                                <?php if (!empty($last_result['error_count'])): ?>
+                                <span class="wc-gs-stat wc-gs-stat-error"><?php printf(esc_html__('Errors: %d', 'wc-google-sheets-sync'), (int) $last_result['error_count']); ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
+
                             <div class="wc-gs-sheet-sync-actions">
                                 <button type="button" class="button button-primary button-small wc-gs-sync-sheet"
                                         data-sheet-id="<?php echo esc_attr($sheet_id); ?>">
