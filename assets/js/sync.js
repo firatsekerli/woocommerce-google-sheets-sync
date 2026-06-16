@@ -160,7 +160,8 @@ jQuery(document).ready(function($) {
             var errorsList = $('#sync-errors-list');
             errorsList.empty();
             progressData.errors.forEach(function(error) {
-                errorsList.append('<li>Row ' + error.row + ': ' + error.message + '</li>');
+                // Use .text() so sheet-derived error messages can't inject HTML/script
+                errorsList.append($('<li>').text('Row ' + error.row + ': ' + error.message));
             });
             $('#sync-errors').show();
         }
@@ -296,15 +297,12 @@ jQuery(document).ready(function($) {
      * Show sync error message
      */
     function showSyncError(message) {
-        var errorHtml = `
-            <div class="notice notice-error">
-                <h4>Sync Failed</h4>
-                <p>${message}</p>
-            </div>
-        `;
-        
         if ($('#sync-messages').length) {
-            $('#sync-messages').html(errorHtml);
+            // Build with .text() so sheet-derived messages can't inject HTML/script
+            var notice = $('<div class="notice notice-error">')
+                .append($('<h4>').text('Sync Failed'))
+                .append($('<p>').text(message));
+            $('#sync-messages').empty().append(notice);
         } else {
             alert('Sync Error: ' + message);
         }

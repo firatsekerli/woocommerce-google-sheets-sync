@@ -70,7 +70,7 @@ if (!empty($search_term)) {
     
     <?php if (is_wp_error($spreadsheets_result)): ?>
         <div class="notice notice-error">
-            <p><?php printf(__('Error loading spreadsheets: %s', 'wc-google-sheets-sync'), $spreadsheets_result->get_error_message()); ?></p>
+            <p><?php printf(esc_html__('Error loading spreadsheets: %s', 'wc-google-sheets-sync'), esc_html($spreadsheets_result->get_error_message())); ?></p>
         </div>
     <?php endif; ?>
     

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Fix admin-context XSS in the sync progress UI: per-row error messages (which
+  embed sheet-derived values like SKU/GTIN/name) were injected into the DOM as
+  HTML in `sync.js`. They are now rendered with `.text()`.
+- Escape the Google API error message in the add-sheet view (`esc_html`).
+- Refuse to delete a post via the sheet "Delete" column unless it is actually a
+  `product` / `product_variation`.
+- Escape the Google Drive search query per Drive rules instead of `addslashes()`.
 - Stop logging the OAuth authorization code and full token payload (access /
   refresh tokens) to `debug.log`.
 - Add capability checks (`manage_woocommerce`) to the remove-sheet, disconnect,

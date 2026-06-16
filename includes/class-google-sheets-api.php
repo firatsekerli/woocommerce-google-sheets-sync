@@ -386,7 +386,9 @@ class WC_GS_Google_Sheets_API {
         try {
             $drive_service = new Google_Service_Drive($this->client);
             
-            $query = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and name contains '" . addslashes($search_term) . "'";
+            // Escape per Google Drive query rules: backslash and single quote
+            $escaped_term = str_replace(array('\\', "'"), array('\\\\', "\\'"), $search_term);
+            $query = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and name contains '" . $escaped_term . "'";
             
             $options = array(
                 'q' => $query,

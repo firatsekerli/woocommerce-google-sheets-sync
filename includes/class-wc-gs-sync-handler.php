@@ -1238,8 +1238,15 @@ class WC_GS_Sync_Handler {
 		if (!$product_to_delete || !$product_to_delete->get_id()) {
 			throw new Exception('Cannot delete product: Product not found');
 		}
-    
+
 		$product_id = $product_to_delete->get_id();
+
+		// Safety: never delete anything that is not a WooCommerce product/variation,
+		// even if a sheet row supplies an arbitrary post ID.
+		if (!in_array(get_post_type($product_id), array('product', 'product_variation'), true)) {
+			throw new Exception('Refusing to delete non-product post ID ' . $product_id);
+		}
+
 		$delete_result = wp_delete_post($product_id, false); // Move to trash
     
 		if (!$delete_result) {
