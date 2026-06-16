@@ -787,7 +787,14 @@ class WC_GS_Sync_Handler {
                     error_log('WC_GS_Sync: SKIPPING - Invalid row number: ' . $row_number . ' (header is row 1, data starts at row 2)');
                     continue;
                 }
-                
+
+                // Unchanged rows: nothing to write back (the sheet already has the
+                // ID, "synced" status and no error), so don't touch the sheet for
+                // them. A fully unchanged sync makes no write-back API call at all.
+                if (isset($result['action']) && $result['action'] === 'skipped') {
+                    continue;
+                }
+
                 // Write Product ID (if available and successful - but NOT for deleted products)
 				if (isset($columns['id']) && isset($product_ids[$row_number]) && $result['action'] !== 'deleted') {
 					$updates[] = array(
