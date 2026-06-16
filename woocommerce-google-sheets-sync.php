@@ -224,7 +224,7 @@ class WC_Google_Sheets_Sync {
             'google_client_id' => '',
             'google_client_secret' => '',
             'batch_size' => 10,
-            'rate_limit_delay' => 1000,
+            'rate_limit_delay' => 300,
             'max_retries' => 3,
             'auto_sync_enabled' => false,
             'auto_sync_interval' => 'hourly'
