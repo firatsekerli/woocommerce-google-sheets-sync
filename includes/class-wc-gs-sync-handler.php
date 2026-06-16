@@ -473,15 +473,12 @@ class WC_GS_Sync_Handler {
             'current_step' => 'Processing products...',
         ));
 
-        // Kick off the first batch
-        if (function_exists('as_enqueue_async_action')) {
-            error_log('WC_GS_Timing: enqueued first batch via Action Scheduler');
-            as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, 0), 'wc-gs-sync');
-        } else {
-            // No Action Scheduler available: process inline (still batched)
-            error_log('WC_GS_Timing: Action Scheduler NOT available — processing inline');
-            $this->process_sync_batch($sync_id, 0);
-        }
+        // Process the first batch(es) inline for immediate results. Waiting for the
+        // Action Scheduler async queue runner can lag many seconds on some hosts
+        // (blocked loopback). We run inline up to a time budget and hand only the
+        // remainder off to the background queue for large catalogs.
+        error_log('WC_GS_Timing: starting first batch inline');
+        $this->process_sync_batch($sync_id, 0);
 
         return $sync_id;
     }
@@ -495,6 +492,11 @@ class WC_GS_Sync_Handler {
         $offset = (int) $offset;
         $has_as = function_exists('as_enqueue_async_action');
 
+        // Process as many batches as fit within this time budget before deferring
+        // the rest to Action Scheduler. This keeps small/medium syncs fully inline
+        // (instant) and avoids one slow queue dispatch per batch on large catalogs.
+        $deadline = microtime(true) + 15;
+
         while (true) {
             $next = $this->run_sync_batch($sync_id, $offset);
 
@@ -502,12 +504,13 @@ class WC_GS_Sync_Handler {
                 return; // Finished (or aborted) — run_sync_batch finalized/cleaned up
             }
 
-            if ($has_as) {
-                as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $next), 'wc-gs-sync');
+            $offset = (int) $next;
+
+            // Out of inline budget: hand the remainder to the background queue.
+            if ($has_as && microtime(true) >= $deadline) {
+                as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $offset), 'wc-gs-sync');
                 return;
             }
-
-            $offset = (int) $next; // Inline fallback: continue with the next batch
         }
     }
 
