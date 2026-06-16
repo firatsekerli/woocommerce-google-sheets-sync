@@ -51,7 +51,7 @@ Google Sheet.
 | **Cross-sells** | Product IDs or SKUs, separated by comma / semicolon / pipe. |
 | **Category Path** | Use `>` for hierarchy (e.g. `Electronics > Phones > iPhone`). |
 | **Tags** | Comma, semicolon, or pipe separated (e.g. `coffee, organic, fair-trade`). |
-| **Sync Status** | Read-only — filled by the system (`synced`, `error`, or `deleted`). |
+| **Sync Status** | Read-only — filled by the system (`synced`, `error`, or `deleted`). A row showing `deleted` is skipped on future syncs (so the product isn't recreated); clear this cell to import the row again. |
 | **Sync Error** | Read-only — filled by the system. |
 | **Last Synced** | Read-only — filled by the system. |
 | **Force Update** | Blank normally; `yes` / `y` / `1` / `true` / `force` = sheet overrides WooCommerce (skips conflict protection for SKU/GTIN/Quantity). |

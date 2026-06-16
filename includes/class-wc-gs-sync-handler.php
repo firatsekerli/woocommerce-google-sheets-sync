@@ -578,6 +578,18 @@ class WC_GS_Sync_Handler {
      * inline loop so it can run across separate background batches).
      */
     private function process_row_into_state($headers, $row, $google_sheet_row, &$state) {
+        // Tombstone: a row already marked "deleted" in its Sync Status is skipped
+        // and left completely untouched (no processing, no write-back), so a
+        // deleted product is not recreated on the next sync. To bring it back,
+        // the user clears the "deleted" value in the Sync Status cell.
+        $status_idx = array_search('Sync Status', $headers);
+        if ($status_idx !== false && isset($row[$status_idx])
+            && strtolower(trim((string) $row[$status_idx])) === 'deleted') {
+            $state['skipped']++;
+            error_log('WC_GS_Sync: Row ' . $google_sheet_row . ' skipped (Sync Status = deleted)');
+            return;
+        }
+
         // One-time action columns: queue the Delete / Force Update cells for
         // clearing whenever they are set, regardless of the row's outcome. This
         // prevents them re-triggering on the next sync (e.g. a stale Delete=yes

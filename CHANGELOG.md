@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error message, dynamic admin URLs).
 
 ### Fixed
+- Treat a row whose `Sync Status` is `deleted` as a tombstone: it is skipped and
+  left untouched on subsequent syncs, so a deleted product is not recreated.
+  Clear the `deleted` value to import the row again.
 - Clear the `Delete` and `Force Update` cells in the sheet after a sync, so these
   one-time flags do not re-trigger on the next run (fixes the recurring
   "Cannot delete product: Product not found" error).
