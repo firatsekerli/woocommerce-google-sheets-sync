@@ -127,7 +127,6 @@ if (isset($_GET['sheet_removed'])) {
                     $sheet_title = isset($sheet_config['sheet_title']) ? $sheet_config['sheet_title'] : 'Unknown Sheet';
                     $sheet_url = isset($sheet_config['sheet_url']) ? $sheet_config['sheet_url'] : '#';
                     $sheet_tab = isset($sheet_config['sheet_tab']) ? $sheet_config['sheet_tab'] : 'Unknown';
-                    $sync_direction = isset($sheet_config['sync_direction']) ? $sheet_config['sync_direction'] : 'sheets_to_wc';
                     $auto_sync_enabled = isset($sheet_config['auto_sync_enabled']) ? $sheet_config['auto_sync_enabled'] : false;
                     $last_synced = isset($sheet_config['last_synced']) ? $sheet_config['last_synced'] : null;
                 ?>
@@ -159,19 +158,7 @@ if (isset($_GET['sheet_removed'])) {
                                 </span>
                                 
                                 <span class="wc-gs-meta-item">
-                                    <strong><?php _e('Direction:', 'wc-google-sheets-sync'); ?></strong> 
-                                    <?php 
-                                    $direction_labels = array(
-                                        'sheets_to_wc' => __('Sheets → WooCommerce', 'wc-google-sheets-sync'),
-                                        'wc_to_sheets' => __('WooCommerce → Sheets', 'wc-google-sheets-sync'),
-                                        'bidirectional' => __('Bidirectional', 'wc-google-sheets-sync')
-                                    );
-                                    echo esc_html(isset($direction_labels[$sync_direction]) ? $direction_labels[$sync_direction] : $sync_direction);
-                                    ?>
-                                </span>
-                                
-                                <span class="wc-gs-meta-item">
-                                    <strong><?php _e('Auto Sync:', 'wc-google-sheets-sync'); ?></strong> 
+                                    <strong><?php _e('Auto Sync:', 'wc-google-sheets-sync'); ?></strong>
                                     <?php echo $auto_sync_enabled ? 
                                         '<span class="wc-gs-status-enabled">' . __('Enabled', 'wc-google-sheets-sync') . '</span>' : 
                                         '<span class="wc-gs-status-disabled">' . __('Disabled', 'wc-google-sheets-sync') . '</span>'; ?>

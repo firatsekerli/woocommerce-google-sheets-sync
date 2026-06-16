@@ -56,26 +56,24 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'save_sheet_config
         wp_die(__('Security check failed', 'wc-google-sheets-sync'));
     }
     
+    // Preserve created_at / last_synced when editing an existing connection
+    $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
+    $existing = isset($connected_sheets[$sheet_id]) ? $connected_sheets[$sheet_id] : array();
+
     // Save sheet configuration
     $sheet_config = array(
         'sheet_id' => $sheet_id,
         'sheet_title' => $sheet_info['title'],
         'sheet_url' => $sheet_info['url'],
         'sheet_tab' => sanitize_text_field($_POST['sheet_tab']),
-        'sync_direction' => sanitize_text_field($_POST['sync_direction']),
-        'header_row' => intval($_POST['header_row']),
-        'data_start_row' => intval($_POST['data_start_row']),
         'auto_sync_enabled' => isset($_POST['auto_sync_enabled']),
-        'created_at' => current_time('mysql'),
-        'last_synced' => null
+        'created_at' => isset($existing['created_at']) ? $existing['created_at'] : current_time('mysql'),
+        'last_synced' => isset($existing['last_synced']) ? $existing['last_synced'] : null,
     );
-    
-    // Get existing connected sheets
-    $connected_sheets = get_option('wc_gs_sync_connected_sheets', array());
-    
+
     // Add or update this sheet
     $connected_sheets[$sheet_id] = $sheet_config;
-    
+
     // Save to database
     update_option('wc_gs_sync_connected_sheets', $connected_sheets);
     
@@ -83,6 +81,12 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'save_sheet_config
     wp_redirect(admin_url('admin.php?page=wc-google-sheets-sync&sheet_connected=1'));
     exit;
 }
+
+// Load existing configuration (if editing) to pre-fill the form
+$connected_sheets_display = get_option('wc_gs_sync_connected_sheets', array());
+$existing_config = isset($connected_sheets_display[$sheet_id]) ? $connected_sheets_display[$sheet_id] : array();
+$existing_tab = isset($existing_config['sheet_tab']) ? $existing_config['sheet_tab'] : '';
+$existing_auto = !empty($existing_config['auto_sync_enabled']);
 ?>
 
 <div class="wrap wc-gs-sync-wrap">
@@ -174,58 +178,31 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'save_sheet_config
                 <td>
                     <select name="sheet_tab" required>
                         <option value=""><?php _e('Select a tab...', 'wc-google-sheets-sync'); ?></option>
-                        <?php foreach ($sheet_info['sheets'] as $sheet): ?>
-                            <option value="<?php echo esc_attr($sheet->getProperties()->getTitle()); ?>">
-                                <?php echo esc_html($sheet->getProperties()->getTitle()); ?>
+                        <?php foreach ($sheet_info['sheets'] as $sheet):
+                            $tab_title = $sheet->getProperties()->getTitle(); ?>
+                            <option value="<?php echo esc_attr($tab_title); ?>" <?php selected($existing_tab, $tab_title); ?>>
+                                <?php echo esc_html($tab_title); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <p class="description"><?php _e('Select which tab/worksheet to sync with.', 'wc-google-sheets-sync'); ?></p>
+                    <p class="description"><?php _e('Select which tab/worksheet to sync with. Row 1 must contain the column headers; product data starts on row 2.', 'wc-google-sheets-sync'); ?></p>
                 </td>
             </tr>
-            
-            <tr>
-                <th scope="row"><?php _e('Sync Direction', 'wc-google-sheets-sync'); ?></th>
-                <td>
-                    <label>
-                        <input type="radio" name="sync_direction" value="sheets_to_wc" checked>
-                        <?php _e('Google Sheets → WooCommerce (Import products from sheets)', 'wc-google-sheets-sync'); ?>
-                    </label><br>
-                    <label>
-                        <input type="radio" name="sync_direction" value="wc_to_sheets">
-                        <?php _e('WooCommerce → Google Sheets (Export products to sheets)', 'wc-google-sheets-sync'); ?>
-                    </label><br>
-                    <label>
-                        <input type="radio" name="sync_direction" value="bidirectional">
-                        <?php _e('Bidirectional (Sync both ways)', 'wc-google-sheets-sync'); ?>
-                    </label>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row"><?php _e('Header Row', 'wc-google-sheets-sync'); ?></th>
-                <td>
-                    <input type="number" name="header_row" value="1" min="1" max="10" class="small-text">
-                    <p class="description"><?php _e('Which row contains the column headers?', 'wc-google-sheets-sync'); ?></p>
-                </td>
-            </tr>
-            
-            <tr>
-                <th scope="row"><?php _e('Data Start Row', 'wc-google-sheets-sync'); ?></th>
-                <td>
-                    <input type="number" name="data_start_row" value="2" min="2" max="100" class="small-text">
-                    <p class="description"><?php _e('Which row does the actual product data start?', 'wc-google-sheets-sync'); ?></p>
-                </td>
-            </tr>
-            
+
             <tr>
                 <th scope="row"><?php _e('Auto Sync', 'wc-google-sheets-sync'); ?></th>
                 <td>
                     <label>
-                        <input type="checkbox" name="auto_sync_enabled" value="1">
-                        <?php _e('Enable automatic syncing for this sheet', 'wc-google-sheets-sync'); ?>
+                        <input type="checkbox" name="auto_sync_enabled" value="1" <?php checked($existing_auto); ?>>
+                        <?php _e('Include this sheet in scheduled automatic syncs', 'wc-google-sheets-sync'); ?>
                     </label>
-                    <p class="description"><?php _e('When enabled, this sheet will be included in scheduled automatic syncs.', 'wc-google-sheets-sync'); ?></p>
+                    <p class="description">
+                        <?php printf(
+                            /* translators: %s: "Enable Auto Sync" settings label */
+                            __('Also requires %s to be turned on in Settings. Sheets without this option are only synced when you click "Sync Now".', 'wc-google-sheets-sync'),
+                            '<strong>' . __('Enable Auto Sync', 'wc-google-sheets-sync') . '</strong>'
+                        ); ?>
+                    </p>
                 </td>
             </tr>
         </table>

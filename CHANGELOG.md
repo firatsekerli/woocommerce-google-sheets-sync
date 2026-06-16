@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Simplified the per-sheet configure screen: removed the non-functional
+  **Sync Direction**, **Header Row**, and **Data Start Row** fields (the engine
+  assumes row 1 = headers, row 2 = data; direction is handled by the Sync Now /
+  Export buttons). The configure screen now also pre-fills when editing an
+  existing connection.
+- Wired up **per-sheet Auto Sync**: scheduled syncs now only run for sheets that
+  have "Include this sheet in scheduled automatic syncs" checked. The global
+  Enable Auto Sync setting acts as the master switch + interval.
 - Syncs now run in the background via **Action Scheduler** (bundled with
   WooCommerce), processed in `batch_size`-sized chunks instead of inline in the
   AJAX request. This removes PHP timeout/memory risk on large catalogs and makes

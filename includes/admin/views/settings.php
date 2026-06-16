@@ -82,6 +82,7 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
                         <input type="checkbox" name="auto_sync_enabled" value="1" <?php checked($options['auto_sync_enabled']); ?> />
                         <?php _e('Automatically sync products on a schedule', 'wc-google-sheets-sync'); ?>
                     </label>
+                    <p class="description"><?php _e('Master switch. Only sheets with "Include this sheet in scheduled automatic syncs" checked (on each sheet\'s configure screen) will be synced.', 'wc-google-sheets-sync'); ?></p>
                 </td>
             </tr>
             <tr>

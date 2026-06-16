@@ -114,6 +114,10 @@ class WC_GS_Sync_Handler {
             if (!is_array($sheet_config)) {
                 continue;
             }
+            // Only include sheets that opted in to automatic syncing
+            if (empty($sheet_config['auto_sync_enabled'])) {
+                continue;
+            }
             $this->start_background_sync($sheet_config);
         }
     }
