@@ -22,14 +22,14 @@ if (!defined('ABSPATH')) {
     <div class="wc-gs-help-card">
         <h2><?php _e('Getting started (3 steps)', 'wc-google-sheets-sync'); ?></h2>
         <ol>
-            <li><?php printf(__('In the %s tab, enter your Google API Client ID and Secret, then connect your Google account.', 'wc-google-sheets-sync'), '<strong>' . __('Settings', 'wc-google-sheets-sync') . '</strong>'); ?></li>
-            <li><?php printf(__('In the %1$s tab, click %2$s and choose your spreadsheet and the tab to sync.', 'wc-google-sheets-sync'), '<strong>' . __('Sheets', 'wc-google-sheets-sync') . '</strong>', '<strong>' . __('Connect New Sheet', 'wc-google-sheets-sync') . '</strong>'); ?></li>
+            <li><?php printf(__('In the %s tab, enter your Google API Client ID, Client Secret and API Key, then connect your Google account.', 'wc-google-sheets-sync'), '<strong>' . __('Settings', 'wc-google-sheets-sync') . '</strong>'); ?></li>
+            <li><?php printf(__('In the %1$s tab, click %2$s, pick your spreadsheet in Google’s file picker, then choose the tab to sync.', 'wc-google-sheets-sync'), '<strong>' . __('Sheets', 'wc-google-sheets-sync') . '</strong>', '<strong>' . __('Connect New Sheet', 'wc-google-sheets-sync') . '</strong>'); ?></li>
             <li><?php printf(__('Click %s to push the sheet into WooCommerce.', 'wc-google-sheets-sync'), '<strong>' . __('Sync Now', 'wc-google-sheets-sync') . '</strong>'); ?></li>
         </ol>
         <p class="description"><?php _e('Your sheet must have the column headers in row 1 and product data starting on row 2.', 'wc-google-sheets-sync'); ?></p>
         <p class="description">
             <strong><?php _e('Connecting to Google:', 'wc-google-sheets-sync'); ?></strong>
-            <?php _e('After creating your Google API credentials, set the OAuth app to <strong>Production</strong> (so it doesn’t disconnect every 7 days). When you connect you’ll see a “Google hasn’t verified this app” screen — that’s expected for your own app; click <strong>Advanced → Go to … → Continue</strong>. See the Settings page for the full step-by-step.', 'wc-google-sheets-sync'); ?>
+            <?php _e('After creating your Google API credentials, set the OAuth app to <strong>Production</strong> (so it doesn’t disconnect every 7 days). The plugin only asks for access to the sheet you pick, so you won’t see a “Google hasn’t verified this app” warning. See the Settings page for the full step-by-step.', 'wc-google-sheets-sync'); ?>
         </p>
         <p>
             <a href="<?php echo esc_url(WC_GS_SYNC_TEMPLATE_URL); ?>" class="button button-secondary" target="_blank" rel="noopener">

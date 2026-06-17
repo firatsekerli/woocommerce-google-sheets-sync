@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notice; editing already-connected sheets is always allowed.
 
 ### Changed
+- **Google connection now uses the non-sensitive `drive.file` scope and the
+  Google Picker.** Instead of browsing your whole Drive (which needed the
+  restricted `drive.readonly` scope and triggered the "Google hasn't verified
+  this app" warning), you pick the spreadsheet with Google's own file picker and
+  the plugin only gets access to the sheets you choose. This removes the
+  unverified-app warning and the need for Google verification/CASA entirely. A
+  new **Google API Key** setting is required for the picker (enable the Google
+  Picker API in your Google Cloud project). Existing users must Disconnect and
+  reconnect once, then re-pick their sheets via the picker.
 - Replace the sync progress popup with the always-visible "Sync Progress" panel
   (below Connected Sheets); during a sync it updates live, and the page refreshes
   on completion to show the final stats.

@@ -97,6 +97,9 @@ class WC_GS_Settings {
         if (isset($input['google_client_secret']) && trim($input['google_client_secret']) !== '') {
             $output['google_client_secret'] = sanitize_text_field($input['google_client_secret']);
         }
+        if (isset($input['google_api_key'])) {
+            $output['google_api_key'] = sanitize_text_field($input['google_api_key']);
+        }
         if (isset($input['batch_size'])) {
             $output['batch_size'] = max(1, intval($input['batch_size']));
         }

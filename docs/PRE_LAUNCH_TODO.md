@@ -37,12 +37,16 @@ feature work for launch.
 - [ ] **Licensing / freemium layer.** Add a provider (Lemon Squeezy / Paddle /
       Freemius) and wire the gates: connected-sheet limit (hook
       `wc_gs_sync_max_sheets` already exists), variable products, and auto-sync.
-- [ ] **Reduce OAuth onboarding friction (post-launch).** v1 ships BYO
-      credentials with clear setup instructions (publish-to-Production + the
-      expected unverified-app warning are now documented on the Settings page and
-      Help tab). The friction-free upgrade is a hosted "connect" broker +
-      `drive.file`/Picker rework + Google brand verification (no CASA) — a larger
-      project deferred for now.
+- [x] **Removed the "unverified app" warning.** The plugin now requests only the
+      non-sensitive `drive.file` scope and lets the user choose the spreadsheet
+      with the Google Picker, so there is no "Google hasn't verified this app"
+      screen and no verification/CASA requirement. Setup still uses BYO
+      credentials (Client ID/Secret + an API key for the Picker).
+- [ ] **Reduce OAuth onboarding friction further (post-launch).** Users still
+      create their own Google Cloud project, OAuth client, and API key. The
+      friction-free upgrade is a hosted "connect" broker so users sign in with one
+      click and never touch the Google Cloud Console — a larger project deferred
+      for now.
 
 ## Polish / nice-to-have
 

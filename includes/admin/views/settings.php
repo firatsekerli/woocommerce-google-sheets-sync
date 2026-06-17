@@ -45,6 +45,13 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
                     <p class="description"><?php _e('Enter your Google API Client Secret. Leave blank to keep the currently saved secret.', 'wc-google-sheets-sync'); ?></p>
                 </td>
             </tr>
+            <tr>
+                <th scope="row"><?php _e('Google API Key', 'wc-google-sheets-sync'); ?></th>
+                <td>
+                    <input type="text" name="google_api_key" value="<?php echo esc_attr(isset($options['google_api_key']) ? $options['google_api_key'] : ''); ?>" class="regular-text" />
+                    <p class="description"><?php _e('Required for the “Select a Google Sheet” picker. Create an API key in the same Google Cloud project (and enable the Google Picker API). See the setup steps below.', 'wc-google-sheets-sync'); ?></p>
+                </td>
+            </tr>
         </table>
         
         <h2><?php _e('Sync Configuration', 'wc-google-sheets-sync'); ?></h2>
@@ -124,27 +131,33 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
     <h2><?php _e('Setup Instructions', 'wc-google-sheets-sync'); ?></h2>
     <ol>
         <li><?php _e('Go to the', 'wc-google-sheets-sync'); ?> <a href="https://console.cloud.google.com/" target="_blank" rel="noopener"><?php _e('Google Cloud Console', 'wc-google-sheets-sync'); ?></a> <?php _e('and create (or select) a project.', 'wc-google-sheets-sync'); ?></li>
-        <li><?php _e('Enable the <strong>Google Sheets API</strong> and the <strong>Google Drive API</strong> for that project.', 'wc-google-sheets-sync'); ?></li>
-        <li><?php _e('Configure the <strong>OAuth consent screen</strong> (User type: External) and add your own Google account as a test user.', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Enable three APIs for that project: <strong>Google Sheets API</strong>, <strong>Google Drive API</strong>, and <strong>Google Picker API</strong>.', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Configure the <strong>OAuth consent screen</strong> (User type: External).', 'wc-google-sheets-sync'); ?></li>
         <li><?php _e('Create credentials → <strong>OAuth client ID</strong> → application type <strong>Web application</strong>.', 'wc-google-sheets-sync'); ?></li>
         <li>
             <?php _e('Under <strong>Authorized redirect URIs</strong>, add this exact URL:', 'wc-google-sheets-sync'); ?>
             <br><code><?php echo esc_html(admin_url('admin.php?page=wc-google-sheets-sync&auth=callback')); ?></code>
         </li>
-        <li><?php _e('Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into the fields above and save.', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into the fields above.', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Create credentials → <strong>API key</strong>. Copy it into the <strong>Google API Key</strong> field above (used by the sheet picker). For security, you can restrict the key to the Google Picker API and your site’s domain.', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Click <strong>Save Settings</strong>, then connect your Google account.', 'wc-google-sheets-sync'); ?></li>
     </ol>
 
-    <div class="notice notice-warning inline" style="margin: 12px 0; padding: 10px 14px;">
-        <p style="margin-top:0;"><strong><?php _e('Two things to know before you connect:', 'wc-google-sheets-sync'); ?></strong></p>
-        <ol style="margin-bottom:0;">
+    <div class="notice notice-info inline" style="margin: 12px 0; padding: 10px 14px;">
+        <p style="margin-top:0;"><strong><?php _e('Good to know:', 'wc-google-sheets-sync'); ?></strong></p>
+        <ul style="margin-bottom:0; list-style: disc; margin-left: 1.5em;">
             <li>
-                <strong><?php _e('Publish your app to Production.', 'wc-google-sheets-sync'); ?></strong>
+                <strong><?php _e('No “unverified app” warning.', 'wc-google-sheets-sync'); ?></strong>
+                <?php _e('This plugin only requests access to the single spreadsheet you pick (the non-sensitive <code>drive.file</code> scope), so Google does not show the scary “Google hasn’t verified this app” screen and you do not need to submit the app for verification.', 'wc-google-sheets-sync'); ?>
+            </li>
+            <li>
+                <strong><?php _e('Still publish your app to Production.', 'wc-google-sheets-sync'); ?></strong>
                 <?php _e('In the Google Cloud Console → OAuth consent screen (or “Audience”), click <strong>Publish app</strong>. While it stays in “Testing”, Google expires the connection every 7 days and you’ll be disconnected weekly. Publishing to Production stops that.', 'wc-google-sheets-sync'); ?>
             </li>
             <li>
-                <strong><?php _e('The “Google hasn’t verified this app” warning is expected.', 'wc-google-sheets-sync'); ?></strong>
-                <?php _e('This is your own Google app accessing your own data. On the warning screen click <strong>Advanced → Go to … → Continue</strong>. (Removing the warning requires Google’s formal app verification, which is optional and only needed if you distribute the app publicly.)', 'wc-google-sheets-sync'); ?>
+                <strong><?php _e('You pick the sheet, not a folder list.', 'wc-google-sheets-sync'); ?></strong>
+                <?php _e('When you connect a sheet you’ll use Google’s own file picker to choose it. The plugin can only read/write the spreadsheets you select there.', 'wc-google-sheets-sync'); ?>
             </li>
-        </ol>
+        </ul>
     </div>
 </div>

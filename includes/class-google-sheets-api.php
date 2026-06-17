@@ -55,9 +55,11 @@ class WC_GS_Google_Sheets_API {
         $this->client->setClientSecret($client_secret);
         $this->client->setRedirectUri($this->get_redirect_uri());
         
-        // UPDATED: Include write permissions for spreadsheets
-        $this->client->addScope(Google_Service_Sheets::SPREADSHEETS); // Full read/write access
-        $this->client->addScope(Google_Service_Drive::DRIVE_READONLY);
+        // Minimal, non-sensitive scopes: drive.file (per-file access granted via the
+        // Google Picker — read/write the chosen spreadsheets) + basic sign-in. This
+        // avoids the sensitive "spreadsheets" and restricted "drive.readonly" scopes,
+        // so there is no "unverified app" warning and no verification requirement.
+        $this->client->addScope('https://www.googleapis.com/auth/drive.file');
         $this->client->addScope('email');
         $this->client->addScope('profile');
         $this->client->setAccessType('offline');

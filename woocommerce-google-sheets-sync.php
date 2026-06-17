@@ -226,6 +226,7 @@ class WC_Google_Sheets_Sync {
         $default_options = array(
             'google_client_id' => '',
             'google_client_secret' => '',
+            'google_api_key' => '',
             'batch_size' => 10,
             'rate_limit_delay' => 300,
             'max_retries' => 3,
