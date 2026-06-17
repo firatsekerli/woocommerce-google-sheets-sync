@@ -39,6 +39,21 @@ if (!defined('ABSPATH')) {
     </div>
 
     <div class="wc-gs-help-card">
+        <h2><?php _e('Seeing a “403 Forbidden” after clicking Allow?', 'wc-google-sheets-sync'); ?></h2>
+        <p><?php _e('If Google sends you back to your site and you land on a blank “403 Forbidden” page (often showing “nginx”), this is your <strong>server’s firewall blocking the return URL</strong> — it is not a plugin error and your credentials are fine.', 'wc-google-sheets-sync'); ?></p>
+        <p><?php _e('Why it happens: after you approve access, Google returns you to a URL that contains <code>https://accounts.google.com</code> as part of the web address. Many web application firewalls (WAF) — including the “7G/8G” rules common on managed hosts such as xCloud, Cloudflare, and some nginx setups — treat a full <code>https://</code> link inside a URL as a possible attack and block the request before WordPress ever sees it.', 'wc-google-sheets-sync'); ?></p>
+        <p><strong><?php _e('How to fix it:', 'wc-google-sheets-sync'); ?></strong></p>
+        <ul class="wc-gs-help-list">
+            <li><?php _e('Ask your host (or your firewall/WAF settings) to <strong>allow-list this admin URL</strong> so its security rules don’t block it:', 'wc-google-sheets-sync'); ?>
+                <br><code><?php echo esc_html(admin_url('admin.php?page=wc-google-sheets-sync&auth=callback')); ?></code>
+            </li>
+            <li><?php _e('On xCloud: open your site’s <strong>Web Application Firewall / 7G Firewall</strong> settings and either add an exception for that admin path or temporarily disable the firewall, connect Google once, then re-enable it.', 'wc-google-sheets-sync'); ?></li>
+            <li><?php _e('On Cloudflare or another WAF: create a rule to <strong>skip / allow</strong> requests to <code>wp-admin/admin.php</code> for your own admin IP, or whitelist the “query string contains a URL” rule for that path.', 'wc-google-sheets-sync'); ?></li>
+        </ul>
+        <p class="description"><?php _e('Once the firewall allows that callback URL, the connection completes normally. You only need to get through it the one time you connect (and again if you reconnect later).', 'wc-google-sheets-sync'); ?></p>
+    </div>
+
+    <div class="wc-gs-help-card">
         <h2><?php _e('Which way does the sync go?', 'wc-google-sheets-sync'); ?></h2>
         <ul class="wc-gs-help-list">
             <li><strong><?php _e('Sync Now (Sheet → WooCommerce):', 'wc-google-sheets-sync'); ?></strong> <?php _e('reads your sheet and creates, updates, or deletes products in WooCommerce. This is the main flow.', 'wc-google-sheets-sync'); ?></li>
