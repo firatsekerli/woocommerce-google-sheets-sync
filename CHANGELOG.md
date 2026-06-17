@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A "Meta" marker column (mirrors "Attributes"): every column to the right of a
+  `Meta` header is written as custom post meta on the product. The header is
+  slugified into the meta key (never underscore-prefixed; filterable via
+  `wcgs_meta_key`), empty cells are skipped and clear that key on re-sync, and
+  values go through ACF when a matching field is registered (else plain post
+  meta). Attributes now stop at the `Meta` marker; export reads meta back too.
 - A "Help" tab (next to Sheets and Settings) explaining how the plugin works in
   plain language: sync direction, what writes back, special columns, why rows are
   skipped, automatic syncing, and tips.

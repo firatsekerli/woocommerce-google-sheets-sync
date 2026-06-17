@@ -8,8 +8,11 @@ Google Sheet.
 
 - **By header name** — almost every column is found by its exact header text (it is
   **case-sensitive**), so you can reorder columns freely.
-- **By position (one exception)** — the **`Attributes`** column is a *marker*: every
-  column to its **right** is treated as an individual global product attribute.
+- **By position (two markers)** — the **`Attributes`** and **`Meta`** columns are
+  *markers* (their own cells stay blank). Columns between `Attributes` and `Meta`
+  become **global product attributes**; columns after `Meta` become **custom post
+  meta (custom fields)**. If there is no `Meta` marker, every column after
+  `Attributes` is an attribute (as before).
 
 ## Product fields
 
@@ -59,8 +62,10 @@ Google Sheet.
 | **Image** | Full image URL (the featured image). |
 | **Gallery Image 01–08** | Full image URLs (positions 1–8). |
 | **Image Alt Text** / **Gallery Image NN Alt Text** | Optional alt text for the corresponding image. |
-| **Attributes** | Marker column — leave its cells blank. Every column **to its right** becomes a global attribute (`pa_*`) used for filtering. |
-| *(columns after Attributes, e.g. Country, Region…)* | Header = attribute name; cell = one or more values (comma / semicolon / pipe separated). Creates filterable global attributes. |
+| **Attributes** | Marker column — leave its cells blank. Columns to its right (up to a `Meta` marker, or the end) become global attributes (`pa_*`) used for filtering. |
+| *(columns between Attributes and Meta, e.g. Country, Region…)* | Header = attribute name; cell = one or more values (comma / semicolon / pipe separated). Creates filterable global attributes. |
+| **Meta** | Marker column — leave its cells blank. Every column **to its right** becomes a custom field (post meta) on the product. |
+| *(columns after Meta, e.g. Seat Height, Source OID…)* | Header is slugified into the meta key (`Seat Height` → `seat_height`); the cell is the value. A non-empty cell writes the meta; an **empty** cell deletes that key on re-sync. Uses ACF if a matching field is registered, otherwise plain post meta. |
 
 ## Notes
 

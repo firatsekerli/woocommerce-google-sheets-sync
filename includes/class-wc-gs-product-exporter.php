@@ -22,18 +22,28 @@ class WC_GS_Product_Exporter {
     public function build_row($product, $headers) {
         $row = array();
 
-        // Columns to the right of the "Attributes" marker are global attributes
+        // Section markers: columns between "Attributes" and "Meta" are global
+        // attributes; columns after "Meta" are custom post meta.
         $attr_start = array_search('Attributes', $headers);
+        $meta_start = array_search('Meta', $headers);
 
         foreach ($headers as $index => $header) {
             $header = trim($header);
 
-            if ($header === 'Attributes') {
+            // Marker cells themselves stay blank
+            if ($header === 'Attributes' || $header === 'Meta') {
                 $row[] = '';
                 continue;
             }
 
-            if ($attr_start !== false && $index > $attr_start) {
+            // Meta columns (after the Meta marker)
+            if ($meta_start !== false && $index > $meta_start) {
+                $row[] = $this->get_meta_value($product, $header);
+                continue;
+            }
+
+            // Attribute columns (after Attributes, and before Meta if present)
+            if ($attr_start !== false && $index > $attr_start && ($meta_start === false || $index < $meta_start)) {
                 $row[] = $this->get_attribute_value($product, $header);
                 continue;
             }
@@ -42,6 +52,34 @@ class WC_GS_Product_Exporter {
         }
 
         return $row;
+    }
+
+    /**
+     * Read a product's custom meta value for a "Meta" column, using the same key
+     * derivation as the importer (and ACF when available) so values round-trip.
+     */
+    private function get_meta_value($product, $header) {
+        if ($header === '') {
+            return '';
+        }
+
+        $key = WC_GS_Product_Data_Builder::meta_key_from_header($header);
+        if ($key === '') {
+            return '';
+        }
+
+        if (function_exists('get_field') && function_exists('acf_get_field') && acf_get_field($key)) {
+            $value = get_field($key, $product->get_id());
+        } else {
+            $value = get_post_meta($product->get_id(), $key, true);
+        }
+
+        // Only export simple scalar values to a cell.
+        if (is_array($value) || is_object($value)) {
+            return '';
+        }
+
+        return (string) $value;
     }
 
     /**

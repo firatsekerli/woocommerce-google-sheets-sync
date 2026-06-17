@@ -60,7 +60,8 @@ if (!defined('ABSPATH')) {
             <li><strong>Delete</strong> — <?php _e('put “yes” to move that product to Trash on the next sync. The cell is cleared automatically afterwards, and the row’s Sync Status becomes “deleted” so it is left alone from then on.', 'wc-google-sheets-sync'); ?></li>
             <li><strong>Force Update</strong> — <?php _e('put “yes” to force the sheet to overwrite WooCommerce for that row (ignores the change checks below). The cell is cleared after the sync.', 'wc-google-sheets-sync'); ?></li>
             <li><strong>Sync Status = deleted</strong> — <?php _e('a row marked “deleted” is skipped so the product is not re-created. Clear that cell if you want to import the row again.', 'wc-google-sheets-sync'); ?></li>
-            <li><strong><?php _e('Attributes', 'wc-google-sheets-sync'); ?></strong> — <?php _e('every column to the right of the “Attributes” column becomes a product attribute (great for filters). The header is the attribute name; the cell holds the value(s).', 'wc-google-sheets-sync'); ?></li>
+            <li><strong><?php _e('Attributes', 'wc-google-sheets-sync'); ?></strong> — <?php _e('columns between the “Attributes” marker and the “Meta” marker become product attributes (great for filters). The header is the attribute name; the cell holds the value(s).', 'wc-google-sheets-sync'); ?></li>
+            <li><strong><?php _e('Meta', 'wc-google-sheets-sync'); ?></strong> — <?php _e('every column to the right of the “Meta” marker becomes a custom field on the product. The header becomes the field key (e.g. “Seat Height” → seat_height). Empty cells are skipped (and clear that field on re-sync). Works with ACF if you have a matching field.', 'wc-google-sheets-sync'); ?></li>
         </ul>
         <p><?php printf(__('For the full list of columns and accepted values, see %s in the plugin folder.', 'wc-google-sheets-sync'), '<code>docs/SHEET_COLUMNS.md</code>'); ?></p>
     </div>

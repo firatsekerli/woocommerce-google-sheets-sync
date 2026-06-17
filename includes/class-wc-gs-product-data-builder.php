@@ -130,6 +130,7 @@ class WC_GS_Product_Data_Builder {
             'upsells' => $get("Upsells"),
             'cross_sells' => $get("Cross-sells"),
             'attributes' => $this->build_attributes($row, $headers),
+            'meta' => $this->build_custom_meta($row, $headers),
             'delete' => $get("Delete")
         );
 
@@ -213,6 +214,11 @@ class WC_GS_Product_Data_Builder {
         }
 
         $count = count($headers);
+        // Attributes run until the next marker ("Meta") or the end of the row.
+        $meta_start = array_search('Meta', $headers);
+        if ($meta_start !== false && $meta_start > $start) {
+            $count = $meta_start;
+        }
         for ($i = $start + 1; $i < $count; $i++) {
             $name = isset($headers[$i]) ? trim($headers[$i]) : '';
             if ($name === '') {
@@ -239,6 +245,59 @@ class WC_GS_Product_Data_Builder {
         }
 
         return $attributes;
+    }
+
+    /**
+     * Build custom post meta from the sheet.
+     *
+     * The "Meta" column is a section marker (mirroring "Attributes"): every column
+     * to its right becomes a custom field (post meta) on the product, where the
+     * header is slugified into the meta key and the cell holds the value. Empty
+     * cells are kept (as empty strings) so the save step can DELETE a previously
+     * set key when its cell is cleared on a re-sync. The "Meta" cell itself is
+     * ignored. Returns an associative array of meta_key => value.
+     */
+    private function build_custom_meta($row, $headers) {
+        $meta = array();
+
+        $start = array_search('Meta', $headers);
+        if ($start === false) {
+            return $meta;
+        }
+
+        $count = count($headers);
+        for ($i = $start + 1; $i < $count; $i++) {
+            $header = isset($headers[$i]) ? trim($headers[$i]) : '';
+            if ($header === '') {
+                continue;
+            }
+            $key = self::meta_key_from_header($header);
+            if ($key === '') {
+                continue;
+            }
+            $meta[$key] = isset($row[$i]) ? trim((string) $row[$i]) : '';
+        }
+
+        return $meta;
+    }
+
+    /**
+     * Derive a safe post-meta key from a column header: lowercase, runs of
+     * non-alphanumeric characters collapsed to a single underscore, leading/
+     * trailing underscores trimmed (so the key never starts with "_", which would
+     * be a protected/hidden meta key). Filterable via `wcgs_meta_key` for optional
+     * namespacing (e.g. a "df_" prefix). Shared with the exporter so import and
+     * export use identical keys.
+     */
+    public static function meta_key_from_header($header) {
+        $key = strtolower((string) $header);
+        $key = preg_replace('/[^a-z0-9]+/', '_', $key);
+        $key = trim($key, '_');
+
+        $key = (string) apply_filters('wcgs_meta_key', $key, $header);
+
+        // Never allow a leading underscore (protected meta).
+        return ltrim($key, '_');
     }
 
     /**

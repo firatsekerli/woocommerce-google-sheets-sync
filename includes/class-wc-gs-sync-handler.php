@@ -1367,7 +1367,7 @@ class WC_GS_Sync_Handler {
 			'weight', 'dimensions', 'shipping_class',
 			'purchase_note', 'menu_order', 'reviews_allowed',
 			'upsells', 'cross_sells',
-			'categories', 'tags', 'attributes', 'meta_data', 'images',
+			'categories', 'tags', 'attributes', 'meta', 'meta_data', 'images',
 		);
 
 		$subset = array();
@@ -1553,6 +1553,11 @@ class WC_GS_Sync_Handler {
             $this->set_product_attributes($product_id, $product_data['attributes']);
         }
 
+        // Handle custom post meta (the "Meta" marker columns)
+        if (!empty($product_data['meta'])) {
+            $this->set_product_meta($product_id, $product_data['meta']);
+        }
+
         // Apply post visibility (public/private/password) from the Visibility column
         $this->apply_post_visibility($product_id, $product_data);
 
@@ -1652,6 +1657,11 @@ class WC_GS_Sync_Handler {
         // Handle global product attributes (for filtering)
         if (!empty($product_data['attributes'])) {
             $this->set_product_attributes($product_id, $product_data['attributes']);
+        }
+
+        // Handle custom post meta (the "Meta" marker columns)
+        if (!empty($product_data['meta'])) {
+            $this->set_product_meta($product_id, $product_data['meta']);
         }
 
         // Apply post visibility (public/private/password) from the Visibility column
@@ -1784,6 +1794,49 @@ class WC_GS_Sync_Handler {
         }
 
         return array_values(array_unique($ids));
+    }
+
+    /**
+     * Write the custom post meta from the "Meta" marker columns.
+     *
+     * $meta_data is meta_key => value (values already trimmed). For each key the
+     * sheet manages: a non-empty value is written, an empty value DELETES the key
+     * (so clearing a cell on re-sync removes the meta). Only keys derived from the
+     * sheet's Meta columns are touched — never other product meta. If ACF is
+     * active and a matching field is registered, the value is written through ACF
+     * so it shows in the product editor; otherwise plain post meta is used.
+     */
+    private function set_product_meta($product_id, $meta_data) {
+        if (empty($meta_data) || !is_array($meta_data)) {
+            return;
+        }
+
+        $acf = function_exists('update_field') && function_exists('acf_get_field');
+
+        foreach ($meta_data as $key => $value) {
+            $key = (string) $key;
+            // Safety: never create/delete protected (underscore-prefixed) meta.
+            if ($key === '' || $key[0] === '_') {
+                continue;
+            }
+
+            $value = trim((string) $value);
+
+            if ($value !== '') {
+                if ($acf && acf_get_field($key)) {
+                    update_field($key, $value, $product_id);
+                } else {
+                    update_post_meta($product_id, $key, $value);
+                }
+            } else {
+                // Empty cell -> remove the key (safe no-op if it was never set).
+                if ($acf && acf_get_field($key)) {
+                    delete_field($key, $product_id);
+                } else {
+                    delete_post_meta($product_id, $key);
+                }
+            }
+        }
     }
 
     /**
