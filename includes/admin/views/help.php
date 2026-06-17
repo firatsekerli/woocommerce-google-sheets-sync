@@ -54,6 +54,17 @@ if (!defined('ABSPATH')) {
     </div>
 
     <div class="wc-gs-help-card">
+        <h2><?php _e('“Requested entity was not found” when syncing or exporting?', 'wc-google-sheets-sync'); ?></h2>
+        <p><?php _e('If a sync or export fails with a 404 / “Requested entity was not found” (or a permission error), it means the plugin no longer has access to that spreadsheet. This plugin only gets access to the exact sheets you pick in Google’s file picker, so this usually happens to sheets that were connected in an older version, or if access was revoked in your Google account.', 'wc-google-sheets-sync'); ?></p>
+        <p><strong><?php _e('Fix it by reconnecting the sheet:', 'wc-google-sheets-sync'); ?></strong></p>
+        <ol class="wc-gs-help-list">
+            <li><?php _e('On the Sheets tab, remove the affected sheet.', 'wc-google-sheets-sync'); ?></li>
+            <li><?php printf(__('Click %s and re-select the same spreadsheet in the Google picker (this grants the plugin access to that file).', 'wc-google-sheets-sync'), '<strong>' . __('Connect New Sheet', 'wc-google-sheets-sync') . '</strong>'); ?></li>
+            <li><?php _e('Run the sync or export again.', 'wc-google-sheets-sync'); ?></li>
+        </ol>
+    </div>
+
+    <div class="wc-gs-help-card">
         <h2><?php _e('Which way does the sync go?', 'wc-google-sheets-sync'); ?></h2>
         <ul class="wc-gs-help-list">
             <li><strong><?php _e('Sync Now (Sheet → WooCommerce):', 'wc-google-sheets-sync'); ?></strong> <?php _e('reads your sheet and creates, updates, or deletes products in WooCommerce. This is the main flow.', 'wc-google-sheets-sync'); ?></li>

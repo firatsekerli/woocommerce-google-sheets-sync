@@ -177,7 +177,7 @@ class WC_GS_Sync_Handler {
         // Read the existing header row to align the export to the sheet's columns
         $existing = $google_api->get_sheet_data($spreadsheet_id, $tab . '!1:1');
         if (is_wp_error($existing)) {
-            return $existing;
+            return $this->friendly_sheet_access_error($existing);
         }
 
         $headers = (!empty($existing) && isset($existing[0]) && is_array($existing[0])) ? $existing[0] : array();
@@ -1060,7 +1060,42 @@ class WC_GS_Sync_Handler {
             }
         }
 
+        if (is_wp_error($result)) {
+            return $this->friendly_sheet_access_error($result);
+        }
+
         return $result;
+    }
+
+    /**
+     * Turn a raw Google Sheets API access failure into actionable guidance.
+     *
+     * Since the plugin uses the per-file `drive.file` scope, the app can only
+     * reach spreadsheets the user picked through the Google Picker. A sheet that
+     * was connected before that change (or whose access was revoked) comes back
+     * as a 404 "Requested entity was not found" / 403. Rewrite those into a
+     * message that tells the user to reconnect the sheet; pass anything else
+     * through unchanged.
+     */
+    private function friendly_sheet_access_error($error) {
+        if (!is_wp_error($error)) {
+            return $error;
+        }
+
+        $message = $error->get_error_message();
+        if (stripos($message, 'not found') !== false
+            || stripos($message, 'notFound') !== false
+            || stripos($message, 'NOT_FOUND') !== false
+            || stripos($message, 'permission') !== false
+            || stripos($message, 'insufficient') !== false
+            || stripos($message, '403') !== false) {
+            return new WP_Error(
+                'sheet_access',
+                __('This Google Sheet is no longer accessible to the plugin. Remove it from the dashboard and add it again with "Connect New Sheet" so you can re-select it in the Google picker (this grants the plugin access to that file).', 'wc-google-sheets-sync')
+            );
+        }
+
+        return $error;
     }
     
     /**
