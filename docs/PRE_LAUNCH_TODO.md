@@ -37,11 +37,12 @@ feature work for launch.
 - [ ] **Licensing / freemium layer.** Add a provider (Lemon Squeezy / Paddle /
       Freemius) and wire the gates: connected-sheet limit (hook
       `wc_gs_sync_max_sheets` already exists), variable products, and auto-sync.
-- [ ] **Reduce OAuth onboarding friction.** Requiring each customer to create
-      their own Google Cloud OAuth app is a major conversion killer. Decide:
-      a guided setup doc/video, or a hosted "connect" service (the latter needs
-      Google OAuth verification + a CASA security assessment for the Drive/Sheets
-      scopes).
+- [ ] **Reduce OAuth onboarding friction (post-launch).** v1 ships BYO
+      credentials with clear setup instructions (publish-to-Production + the
+      expected unverified-app warning are now documented on the Settings page and
+      Help tab). The friction-free upgrade is a hosted "connect" broker +
+      `drive.file`/Picker rework + Google brand verification (no CASA) — a larger
+      project deferred for now.
 
 ## Polish / nice-to-have
 

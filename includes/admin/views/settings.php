@@ -120,14 +120,31 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
     </form>
     
     <hr>
-    
+
     <h2><?php _e('Setup Instructions', 'wc-google-sheets-sync'); ?></h2>
     <ol>
-        <li><?php _e('Go to the', 'wc-google-sheets-sync'); ?> <a href="https://console.developers.google.com/" target="_blank"><?php _e('Google Developers Console', 'wc-google-sheets-sync'); ?></a></li>
-        <li><?php _e('Create a new project or select an existing one', 'wc-google-sheets-sync'); ?></li>
-        <li><?php _e('Enable the Google Sheets API', 'wc-google-sheets-sync'); ?></li>
-        <li><?php _e('Create credentials (OAuth 2.0 Client ID)', 'wc-google-sheets-sync'); ?></li>
-        <li><?php _e('Add your website domain to authorized domains', 'wc-google-sheets-sync'); ?></li>
-        <li><?php _e('Copy the Client ID and Client Secret to the fields above', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Go to the', 'wc-google-sheets-sync'); ?> <a href="https://console.cloud.google.com/" target="_blank" rel="noopener"><?php _e('Google Cloud Console', 'wc-google-sheets-sync'); ?></a> <?php _e('and create (or select) a project.', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Enable the <strong>Google Sheets API</strong> and the <strong>Google Drive API</strong> for that project.', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Configure the <strong>OAuth consent screen</strong> (User type: External) and add your own Google account as a test user.', 'wc-google-sheets-sync'); ?></li>
+        <li><?php _e('Create credentials → <strong>OAuth client ID</strong> → application type <strong>Web application</strong>.', 'wc-google-sheets-sync'); ?></li>
+        <li>
+            <?php _e('Under <strong>Authorized redirect URIs</strong>, add this exact URL:', 'wc-google-sheets-sync'); ?>
+            <br><code><?php echo esc_html(admin_url('admin.php?page=wc-google-sheets-sync&auth=callback')); ?></code>
+        </li>
+        <li><?php _e('Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into the fields above and save.', 'wc-google-sheets-sync'); ?></li>
     </ol>
+
+    <div class="notice notice-warning inline" style="margin: 12px 0; padding: 10px 14px;">
+        <p style="margin-top:0;"><strong><?php _e('Two things to know before you connect:', 'wc-google-sheets-sync'); ?></strong></p>
+        <ol style="margin-bottom:0;">
+            <li>
+                <strong><?php _e('Publish your app to Production.', 'wc-google-sheets-sync'); ?></strong>
+                <?php _e('In the Google Cloud Console → OAuth consent screen (or “Audience”), click <strong>Publish app</strong>. While it stays in “Testing”, Google expires the connection every 7 days and you’ll be disconnected weekly. Publishing to Production stops that.', 'wc-google-sheets-sync'); ?>
+            </li>
+            <li>
+                <strong><?php _e('The “Google hasn’t verified this app” warning is expected.', 'wc-google-sheets-sync'); ?></strong>
+                <?php _e('This is your own Google app accessing your own data. On the warning screen click <strong>Advanced → Go to … → Continue</strong>. (Removing the warning requires Google’s formal app verification, which is optional and only needed if you distribute the app publicly.)', 'wc-google-sheets-sync'); ?>
+            </li>
+        </ol>
+    </div>
 </div>

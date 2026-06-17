@@ -27,6 +27,10 @@ if (!defined('ABSPATH')) {
             <li><?php printf(__('Click %s to push the sheet into WooCommerce.', 'wc-google-sheets-sync'), '<strong>' . __('Sync Now', 'wc-google-sheets-sync') . '</strong>'); ?></li>
         </ol>
         <p class="description"><?php _e('Your sheet must have the column headers in row 1 and product data starting on row 2.', 'wc-google-sheets-sync'); ?></p>
+        <p class="description">
+            <strong><?php _e('Connecting to Google:', 'wc-google-sheets-sync'); ?></strong>
+            <?php _e('After creating your Google API credentials, set the OAuth app to <strong>Production</strong> (so it doesn’t disconnect every 7 days). When you connect you’ll see a “Google hasn’t verified this app” screen — that’s expected for your own app; click <strong>Advanced → Go to … → Continue</strong>. See the Settings page for the full step-by-step.', 'wc-google-sheets-sync'); ?>
+        </p>
         <p>
             <a href="<?php echo esc_url(WC_GS_SYNC_TEMPLATE_URL); ?>" class="button button-secondary" target="_blank" rel="noopener">
                 <?php _e('📋 Get the Google Sheet template', 'wc-google-sheets-sync'); ?>
