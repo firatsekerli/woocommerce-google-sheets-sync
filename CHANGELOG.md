@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Variable products (import).** A variable product is a parent row
+  (`Type = variable`) plus one row per variation (`Type = variation`, `Parent` =
+  the parent SKU), linked by SKU. The parent row defines the variation attributes
+  (all values, pipe-separated); each variation row carries its own attribute
+  values, SKU, price, stock, weight/dimensions, shipping class, tax class,
+  virtual/downloadable, image, GTIN, description (Short Description) and
+  enabled/disabled (Status). The engine processes parents before variations,
+  matches variations by SKU or attribute combination, and deletes orphan
+  variations no longer in the sheet (the sheet is the source of truth). Export of
+  variable products back to the sheet is still pending.
 - **Virtual and downloadable simple products.** Five new optional columns:
   `Virtual` and `Downloadable` (yes/no), plus `Download Files`
   (`Name | URL` per line), `Download Limit` and `Download Expiry`. They flow

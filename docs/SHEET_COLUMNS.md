@@ -30,7 +30,8 @@ Google Sheet.
 | **Name** | Product title (required). |
 | **Description** | Full description (HTML/text). |
 | **Short Description** | Short summary (HTML/text). |
-| **Type** | Put `simple`. This version manages simple products. **Virtual and downloadable are not separate types** — they are simple products with a flag set, so use the `Virtual` / `Downloadable` columns for those (the Type cell stays `simple`). |
+| **Type** | `simple` (default), `variable` (a parent with variations), or `variation` (one variation of a variable parent). **Virtual and downloadable are not types** — they are flags on a simple/variation product (use the `Virtual` / `Downloadable` columns). See "Variable products" below. |
+| **Parent** | Variation rows only: the **SKU** of the variable parent this variation belongs to. Blank for `simple` and `variable` rows. |
 | **Virtual** | `yes` / `true` / `1` = virtual (no shipping, e.g. a service or download); `no` / `false` / `0` / blank = physical. Optional column — omit it to leave the current value unchanged. |
 | **Downloadable** | `yes` / `true` / `1` = downloadable; `no` / `false` / `0` / blank = not downloadable. Usually paired with **Download Files**. Optional column — omit it to leave the current value unchanged. |
 | **Download Files** | One file per line (or separated by `;`), each as `Name \| URL` — e.g. `User Manual \| https://example.com/manual.pdf`. If you omit the `Name \|` part, the file name is taken from the URL. An empty cell (when the column exists) clears the product's files. |
@@ -86,6 +87,25 @@ Google Sheet.
   `Downloadable = yes`. The `Virtual`, `Downloadable`, `Download Files`,
   `Download Limit` and `Download Expiry` columns are all optional — leave a column
   out entirely and the plugin won't touch that aspect of your products.
+
+## Variable products
+
+A variable product is **one parent row plus one row per variation**, linked by the
+parent's SKU (see `docs/examples/variable-test.csv`).
+
+- **Parent row:** `Type = variable`, give it a `SKU`, and in each variation
+  attribute column (to the right of the `Attributes` marker) list **all** values,
+  pipe-separated (e.g. Size = `Small | Medium | Large`). Don't set a price on the
+  parent — the price comes from the variations.
+- **Variation rows:** `Type = variation`, `Parent` = the parent's SKU, each
+  variation attribute column holds **one** value (e.g. `Small`), plus that
+  variation's own SKU, price, stock, weight, image, etc. On a variation row,
+  `Short Description` becomes the variation description and `Status` controls
+  enabled (`publish`) / disabled (`private`).
+- **The sheet is the source of truth:** a variation that exists in WooCommerce but
+  is no longer in the sheet is deleted on sync. (Safety: this only happens for a
+  parent that has at least one variation row in the sheet, so syncing just the
+  parent never wipes its variations.)
 - **Attributes** must be placed to the right of the `Attributes` marker column. Two-word
   headers are fine (e.g. `Wine Region` becomes `pa_wine-region`); the display name keeps
   its spaces. Headers that would otherwise produce the same slug (e.g. `WS` and `W&S`,

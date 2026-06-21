@@ -690,29 +690,17 @@ class WC_GS_Sync_Handler {
             $state['clear_force_update'][] = $google_sheet_row;
         }
 
-        // Variation rows are processed in a later phase (A4): they need their
-        // parent (built in this same run) and the parent's variation attributes.
-        // Until then, defer with a clear message instead of mis-creating them.
-        if ($kind === 'variation') {
-            $message = __('Variation rows are not processed yet (variable products are in development).', 'wc-google-sheets-sync');
-            $state['errors'][] = array('row' => $google_sheet_row, 'message' => $message);
-            $state['skipped']++;
-            $state['sync_results'][$google_sheet_row] = array(
-                'status' => 'error',
-                'action' => 'failed',
-                'product_id' => null,
-                'error' => $message,
-            );
-            return;
-        }
-
         try {
-            // Variable parents and simple products take different processors;
-            // variations (deferred above) will resolve their parent from
-            // $state['parent_ids'] once A4 lands.
-            $result = ($kind === 'variable')
-                ? $this->process_variable_parent_row($headers, $row, $google_sheet_row)
-                : $this->process_product_row($headers, $row, $google_sheet_row);
+            // Route by kind: simple products, variable parents, and variations
+            // each take a different processor. Variations resolve their parent
+            // from $state['parent_ids'] (built earlier this run, parents first).
+            if ($kind === 'variable') {
+                $result = $this->process_variable_parent_row($headers, $row, $google_sheet_row);
+            } elseif ($kind === 'variation') {
+                $result = $this->process_variation_row($headers, $row, $google_sheet_row, $parent_sku, $state);
+            } else {
+                $result = $this->process_product_row($headers, $row, $google_sheet_row);
+            }
 
             // Map this parent's SKU -> product ID so variation rows can find it.
             if ($kind === 'variable' && !empty($result['product_id']) && !empty($result['sku'])) {
@@ -784,6 +772,10 @@ class WC_GS_Sync_Handler {
             $sheet_config = $job['sheet_config'];
             $headers = $job['headers'];
 
+            // Variable products: reconcile and re-sync parents now that all
+            // variation rows have been processed.
+            $this->reconcile_variable_products($state);
+
             // Preserve row-number keys by using + instead of array_merge
             $all_write_backs = $state['created_products'] + $state['missing_ids'];
 
@@ -853,6 +845,49 @@ class WC_GS_Sync_Handler {
     }
 
     /**
+     * After all rows are processed, reconcile each touched variable product:
+     *
+     * 1. Delete orphan variations — variations that exist in WooCommerce but were
+     *    not present in the sheet this run (the sheet is the source of truth).
+     *    Safety: only parents that had at least one variation row this run are
+     *    reconciled, so syncing only the parent row never wipes its variations.
+     * 2. Re-sync the parent (WC_Product_Variable::sync) so its price range and
+     *    stock reflect the variations.
+     *
+     * Increments $state['deleted'] for each removed variation.
+     */
+    private function reconcile_variable_products(&$state) {
+        // Delete orphan variations for parents that had variation rows this run.
+        if (!empty($state['parent_seen_variations']) && is_array($state['parent_seen_variations'])) {
+            foreach ($state['parent_seen_variations'] as $parent_id => $seen_ids) {
+                $parent = wc_get_product($parent_id);
+                if (!$parent || $parent->get_type() !== 'variable') {
+                    continue;
+                }
+                $seen = array_map('intval', (array) $seen_ids);
+                foreach ($parent->get_children() as $child_id) {
+                    if (in_array((int) $child_id, $seen, true)) {
+                        continue;
+                    }
+                    $orphan = wc_get_product($child_id);
+                    if ($orphan && $orphan->get_type() === 'variation') {
+                        $orphan->delete(true); // force delete (variations have no trash)
+                        $state['deleted']++;
+                        error_log('WC_GS_Sync: Deleted orphan variation ' . (int) $child_id . ' of parent ' . (int) $parent_id);
+                    }
+                }
+            }
+        }
+
+        // Re-sync every parent created/updated this run (price range, stock…).
+        if (!empty($state['parent_ids']) && class_exists('WC_Product_Variable')) {
+            foreach (array_unique(array_map('intval', array_values($state['parent_ids']))) as $pid) {
+                WC_Product_Variable::sync($pid);
+            }
+        }
+    }
+
+    /**
      * The empty accumulator used to track results across background batches.
      */
     private function get_default_sync_state() {
@@ -871,6 +906,7 @@ class WC_GS_Sync_Handler {
             'clear_delete' => array(),       // rows whose Delete cell should be cleared
             'clear_force_update' => array(), // rows whose Force Update cell should be cleared
             'parent_ids' => array(),         // variable parent SKU => product ID (for variations)
+            'parent_seen_variations' => array(), // parent ID => [variation IDs seen this run]
             'read_ms' => 0,                  // timing: Google Sheets read
             'dispatch_ms' => 0,              // timing: queue dispatch latency
             'process_ms' => 0,               // timing: row processing (all batches)
@@ -1638,6 +1674,323 @@ class WC_GS_Sync_Handler {
         $this->apply_post_visibility($product_id, $product_data);
 
         return array('action' => $action, 'product_id' => $product_id);
+    }
+
+    /**
+     * Process a `Type = variation` row: create or update one WC_Product_Variation
+     * under its parent (resolved by the Parent SKU via $state['parent_ids'], or an
+     * existing variable product with that SKU). Applies the variation's attribute
+     * values plus its own price, stock, SKU, weight/dimensions, shipping class,
+     * tax class, virtual/downloadable, image, GTIN, description (Short Description)
+     * and enabled/disabled (Status). See docs/VARIABLE_PRODUCTS_PLAN.md.
+     */
+    private function process_variation_row($headers, $row, $row_number, $parent_sku, &$state) {
+        $parent_sku = trim((string) $parent_sku);
+        if ($parent_sku === '') {
+            throw new Exception('Variation row has no Parent SKU.');
+        }
+
+        // Resolve the parent: prefer this run's map, then an existing variable
+        // product with that SKU (e.g. the parent was synced on an earlier run).
+        $parent_id = isset($state['parent_ids'][$parent_sku]) ? (int) $state['parent_ids'][$parent_sku] : 0;
+        if (!$parent_id) {
+            $maybe = wc_get_product_id_by_sku($parent_sku);
+            if ($maybe) {
+                $maybe_product = wc_get_product($maybe);
+                if ($maybe_product && $maybe_product->get_type() === 'variable') {
+                    $parent_id = (int) $maybe;
+                    $state['parent_ids'][$parent_sku] = $parent_id;
+                }
+            }
+        }
+        if (!$parent_id) {
+            throw new Exception(sprintf('Parent SKU "%s" not found for this variation.', $parent_sku));
+        }
+
+        $data_builder = new WC_GS_Product_Data_Builder();
+        $product_data = $data_builder->build_product_data($row, $headers);
+
+        // A variation row with Delete = yes removes just that variation.
+        if ($this->should_delete_product($product_data)) {
+            return $this->handle_product_deletion($product_data, $row_number);
+        }
+
+        // Attribute map (name => single value) from the parsed attribute columns.
+        $attr_map = array();
+        if (!empty($product_data['attributes'])) {
+            foreach ($product_data['attributes'] as $attr) {
+                $name = isset($attr['name']) ? $attr['name'] : '';
+                $values = isset($attr['values']) ? (array) $attr['values'] : array();
+                if ($name !== '' && !empty($values)) {
+                    $attr_map[$name] = $values[0]; // a variation carries one value per attribute
+                }
+            }
+        }
+
+        // Match an existing variation (by ID, SKU, then attribute combination).
+        $variation = $this->find_matching_variation($parent_id, $product_data, $attr_map);
+        $had_empty_id = empty($product_data['id']);
+        $action = $variation ? 'updated' : 'created';
+
+        if (!$variation) {
+            $variation = new WC_Product_Variation();
+            $variation->set_parent_id($parent_id);
+        }
+
+        // Attributes: resolve to taxonomy => term-slug and ensure the parent
+        // offers each option.
+        $variation->set_attributes($this->resolve_variation_attributes($parent_id, $attr_map));
+
+        if (!empty($product_data['sku'])) {
+            $variation->set_sku($product_data['sku']);
+        }
+        if (!empty($product_data['meta_data'])) {
+            foreach ($product_data['meta_data'] as $meta) {
+                $variation->update_meta_data($meta['key'], $meta['value']);
+            }
+        }
+
+        // Variation description = the Short Description column.
+        if (isset($product_data['short_description'])) {
+            $variation->set_description((string) $product_data['short_description']);
+        }
+
+        // Enabled/disabled from Status (private = disabled).
+        $status = !empty($product_data['status']) ? strtolower($product_data['status']) : 'publish';
+        $variation->set_status($status === 'private' ? 'private' : 'publish');
+
+        // Prices + sale schedule.
+        if (isset($product_data['regular_price']) && $product_data['regular_price'] !== '') {
+            $variation->set_regular_price($product_data['regular_price']);
+        }
+        if (isset($product_data['sale_price'])) {
+            $variation->set_sale_price($product_data['sale_price'] !== '' ? $product_data['sale_price'] : '');
+        }
+        if (isset($product_data['date_on_sale_from'])) {
+            $variation->set_date_on_sale_from($product_data['date_on_sale_from'] !== '' ? $product_data['date_on_sale_from'] : null);
+        }
+        if (isset($product_data['date_on_sale_to'])) {
+            $variation->set_date_on_sale_to($product_data['date_on_sale_to'] !== '' ? $product_data['date_on_sale_to'] : null);
+        }
+
+        // Stock.
+        if (isset($product_data['manage_stock'])) {
+            $variation->set_manage_stock((bool) $product_data['manage_stock']);
+        }
+        if (array_key_exists('stock_quantity', $product_data)) {
+            $variation->set_stock_quantity(intval($product_data['stock_quantity']));
+        }
+        if (!empty($product_data['stock_status'])) {
+            $variation->set_stock_status($product_data['stock_status']);
+        }
+        if (!empty($product_data['backorders'])) {
+            $variation->set_backorders($product_data['backorders']);
+        }
+        if (!empty($product_data['low_stock_amount'])) {
+            $variation->set_low_stock_amount(intval($product_data['low_stock_amount']));
+        }
+
+        // Weight / dimensions.
+        if (!empty($product_data['weight'])) {
+            $variation->set_weight($product_data['weight']);
+        }
+        if (!empty($product_data['dimensions']['length'])) {
+            $variation->set_length($product_data['dimensions']['length']);
+        }
+        if (!empty($product_data['dimensions']['width'])) {
+            $variation->set_width($product_data['dimensions']['width']);
+        }
+        if (!empty($product_data['dimensions']['height'])) {
+            $variation->set_height($product_data['dimensions']['height']);
+        }
+
+        // Shipping class.
+        if (!empty($product_data['shipping_class'])) {
+            $term = get_term_by('slug', $product_data['shipping_class'], 'product_shipping_class');
+            if ($term && !is_wp_error($term)) {
+                $variation->set_shipping_class_id($term->term_id);
+            }
+        }
+
+        // Tax class.
+        if (!empty($product_data['tax_class'])) {
+            $tax_class = trim((string) $product_data['tax_class']);
+            $variation->set_tax_class(strtolower($tax_class) === 'standard' ? '' : sanitize_title($tax_class));
+        }
+
+        // Virtual / downloadable (variations support these too).
+        if (isset($product_data['virtual'])) {
+            $variation->set_virtual((bool) $product_data['virtual']);
+        }
+        if (isset($product_data['downloadable'])) {
+            $variation->set_downloadable((bool) $product_data['downloadable']);
+        }
+        if (isset($product_data['downloads'])) {
+            $variation->set_downloads($this->build_download_objects($product_data['downloads']));
+        }
+        if (isset($product_data['download_limit'])) {
+            $variation->set_download_limit((int) $product_data['download_limit']);
+        }
+        if (isset($product_data['download_expiry'])) {
+            $variation->set_download_expiry((int) $product_data['download_expiry']);
+        }
+
+        $variation_id = $variation->save();
+
+        // Variation image (single image — the first one provided for the row).
+        if (!empty($product_data['images'])) {
+            $image_id = $this->resolve_variation_image_id($product_data['images'][0], $variation_id);
+            if ($image_id) {
+                $variation->set_image_id($image_id);
+                $variation->save();
+            }
+        }
+
+        // Record for orphan reconciliation (variations no longer in the sheet).
+        if (!isset($state['parent_seen_variations'][$parent_id])) {
+            $state['parent_seen_variations'][$parent_id] = array();
+        }
+        $state['parent_seen_variations'][$parent_id][] = $variation_id;
+
+        $result = array(
+            'action'       => $action,
+            'product_id'   => $variation_id,
+            'sku'          => $variation->get_sku(),
+            'missing_id'   => $had_empty_id,
+            'row_number'   => $row_number,
+            'match_method' => 'variation',
+        );
+
+        // Write a generated/used SKU back if the row's SKU cell was blank.
+        $sku_index = array_search('SKU', $headers);
+        $had_empty_sku = !($sku_index !== false && isset($row[$sku_index]) && trim((string) $row[$sku_index]) !== '');
+        if ($had_empty_sku && !empty($result['sku'])) {
+            $result['generated_sku'] = $result['sku'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Find an existing variation of $parent_id that this row refers to: by the
+     * row's ID, then its SKU, then by an exact attribute-combination match.
+     * Returns a WC_Product_Variation or null.
+     */
+    private function find_matching_variation($parent_id, $product_data, $attr_map) {
+        // By ID
+        if (!empty($product_data['id'])) {
+            $p = wc_get_product($product_data['id']);
+            if ($p && $p->get_type() === 'variation' && (int) $p->get_parent_id() === (int) $parent_id) {
+                return $p;
+            }
+        }
+        // By SKU
+        if (!empty($product_data['sku'])) {
+            $vid = wc_get_product_id_by_sku($product_data['sku']);
+            if ($vid) {
+                $p = wc_get_product($vid);
+                if ($p && $p->get_type() === 'variation' && (int) $p->get_parent_id() === (int) $parent_id) {
+                    return $p;
+                }
+            }
+        }
+        // By attribute combination
+        $want = $this->attr_map_to_taxonomy_slugs($attr_map);
+        if (!empty($want)) {
+            $parent = wc_get_product($parent_id);
+            if ($parent && $parent->get_type() === 'variable') {
+                foreach ($parent->get_children() as $child_id) {
+                    $child = wc_get_product($child_id);
+                    if (!$child || $child->get_type() !== 'variation') {
+                        continue;
+                    }
+                    $child_attrs = $child->get_attributes(); // taxonomy => slug
+                    $matches = true;
+                    foreach ($want as $tax => $slug) {
+                        if (!isset($child_attrs[$tax]) || $child_attrs[$tax] !== $slug) {
+                            $matches = false;
+                            break;
+                        }
+                    }
+                    if ($matches) {
+                        return $child;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve an attribute map (name => value) to the taxonomy => term-slug map a
+     * variation stores, creating terms as needed and ensuring the parent product
+     * offers each option (so the variation's value is valid).
+     */
+    private function resolve_variation_attributes($parent_id, $attr_map) {
+        $resolved = array();
+        foreach ($attr_map as $name => $value) {
+            $value = trim((string) $value);
+            if ($name === '' || $value === '') {
+                continue;
+            }
+            $taxonomy = $this->get_or_create_global_attribute($name);
+            if (!$taxonomy) {
+                continue;
+            }
+            $term = get_term_by('name', $value, $taxonomy);
+            if (!$term) {
+                $inserted = wp_insert_term($value, $taxonomy);
+                if (is_wp_error($inserted)) {
+                    error_log('WC_GS_Sync: Failed to create variation term "' . $value . '" in ' . $taxonomy . ': ' . $inserted->get_error_message());
+                    continue;
+                }
+                $term = get_term($inserted['term_id'], $taxonomy);
+            }
+            // Ensure the parent offers this term (append, don't replace).
+            wp_set_object_terms($parent_id, (int) $term->term_id, $taxonomy, true);
+            $resolved[$taxonomy] = $term->slug;
+        }
+        return $resolved;
+    }
+
+    /**
+     * Read-only version of the above for matching: attribute name => value to
+     * taxonomy => slug, without creating terms or touching the parent.
+     */
+    private function attr_map_to_taxonomy_slugs($attr_map) {
+        $out = array();
+        foreach ($attr_map as $name => $value) {
+            $value = trim((string) $value);
+            if ($name === '' || $value === '') {
+                continue;
+            }
+            $taxonomy = $this->get_or_create_global_attribute($name);
+            if (!$taxonomy) {
+                continue;
+            }
+            $term = get_term_by('name', $value, $taxonomy);
+            $out[$taxonomy] = $term ? $term->slug : sanitize_title($value);
+        }
+        return $out;
+    }
+
+    /**
+     * Resolve a single image definition (existing attachment id or a src URL) to
+     * an attachment ID for a variation. Returns 0 if none/failed.
+     */
+    private function resolve_variation_image_id($image_data, $variation_id) {
+        if (isset($image_data['id']) && !empty($image_data['id'])) {
+            return (int) $image_data['id'];
+        }
+        if (isset($image_data['src']) && !empty($image_data['src'])) {
+            $image_id = $this->upload_image_from_url($image_data['src'], $variation_id);
+            if (!is_wp_error($image_id)) {
+                return (int) $image_id;
+            }
+            error_log('WC_GS_Sync: Failed to upload variation image: ' . $image_id->get_error_message());
+        }
+        return 0;
     }
 
 	/**

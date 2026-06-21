@@ -1,0 +1,6 @@
+ID,SKU,Name,Short Description,Type,Parent,Regular Price,Sale Price,Stock Management,Quantity,Stock Status,Status,Attributes,Size,Color
+,VARSHIRT,Variable Test Shirt,,variable,,,,,,,publish,,Small | Medium | Large,Red | Blue
+,VARSHIRT-S-RED,,Small / Red,variation,VARSHIRT,19.99,,yes,10,instock,publish,,Small,Red
+,VARSHIRT-M-RED,,Medium / Red,variation,VARSHIRT,19.99,17.99,yes,5,instock,publish,,Medium,Red
+,VARSHIRT-L-BLUE,,Large / Blue,variation,VARSHIRT,21.99,,yes,8,instock,publish,,Large,Blue
+,VARSHIRT-S-BLUE,,Small / Blue,variation,VARSHIRT,19.99,,yes,0,outofstock,publish,,Small,Blue
