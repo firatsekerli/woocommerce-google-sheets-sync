@@ -452,8 +452,14 @@ class WC_GS_Sync_Handler {
         }
 
         $headers = $sheet_data[0];               // Row 1 = headers
-        $rows = array_slice($sheet_data, 1);     // Remaining rows = product data
-        $total = count($rows);
+        $data_rows = array_slice($sheet_data, 1); // Remaining rows = product data
+
+        // Build ordered "work items" so the engine can process all parents
+        // (simple + variable) before any variations. Each item carries its real
+        // sheet row number, so write-back still targets the right cells after the
+        // reorder. (For a simple-only sheet this is a no-op: order is preserved.)
+        $work_items = $this->build_work_items($data_rows, $headers);
+        $total = count($work_items);
 
         // Persist the job payload so each background batch can pick up where the
         // previous one left off (options, not transients, for durability).
@@ -461,7 +467,7 @@ class WC_GS_Sync_Handler {
         update_option('wc_gs_sync_job_' . $sync_id, array(
             'sheet_config' => $sheet_config,
             'headers' => $headers,
-            'rows' => $rows,
+            'rows' => $work_items,
             'total' => $total,
             'read_ms' => $read_ms,
             'enqueued_at' => microtime(true),
@@ -482,6 +488,42 @@ class WC_GS_Sync_Handler {
         $this->process_sync_batch($sync_id, 0);
 
         return $sync_id;
+    }
+
+    /**
+     * Turn raw sheet rows into ordered work items for the engine.
+     *
+     * Each item is array('row' => <cells>, 'sheet_row' => <1-based row>,
+     * 'kind' => simple|variable|variation, 'parent_sku' => <variation parent>).
+     * Parents (simple + variable) are emitted first, in sheet order, then all
+     * variations in sheet order — a stable partition so that, because batches
+     * only move forward, every parent is processed before its variations. The
+     * real sheet row number is captured here (it can no longer be derived from
+     * the batch offset once rows are reordered).
+     */
+    private function build_work_items($data_rows, $headers) {
+        require_once WC_GS_SYNC_PLUGIN_PATH . 'includes/class-wc-gs-product-data-builder.php';
+
+        $parents = array();
+        $variations = array();
+
+        foreach ($data_rows as $i => $row) {
+            $class = WC_GS_Product_Data_Builder::classify_row($row, $headers);
+            $item = array(
+                'row'        => $row,
+                'sheet_row'  => $i + 2, // +1 for 1-based rows, +1 for the header row
+                'kind'       => $class['kind'],
+                'parent_sku' => $class['parent_sku'],
+            );
+
+            if ($class['kind'] === 'variation') {
+                $variations[] = $item;
+            } else {
+                $parents[] = $item;
+            }
+        }
+
+        return array_merge($parents, $variations);
     }
 
     /**
@@ -559,10 +601,22 @@ class WC_GS_Sync_Handler {
 
         try {
             $slice = array_slice($rows, $offset, $batch_size);
-            foreach ($slice as $i => $row) {
-                // offset 0, i 0 => Google Sheets row 2 (+1 for 1-based, +1 for header)
-                $google_sheet_row = $offset + $i + 2;
-                $this->process_row_into_state($headers, $row, $google_sheet_row, $state);
+            foreach ($slice as $i => $item) {
+                if (is_array($item) && isset($item['row'])) {
+                    // Work item (current format): carries its real sheet row + kind.
+                    $row = $item['row'];
+                    $google_sheet_row = (int) $item['sheet_row'];
+                    $kind = isset($item['kind']) ? $item['kind'] : 'simple';
+                    $parent_sku = isset($item['parent_sku']) ? $item['parent_sku'] : '';
+                } else {
+                    // Legacy raw row (a job enqueued before this version): derive the
+                    // sheet row positionally as before. offset 0, i 0 => row 2.
+                    $row = $item;
+                    $google_sheet_row = $offset + $i + 2;
+                    $kind = 'simple';
+                    $parent_sku = '';
+                }
+                $this->process_row_into_state($headers, $row, $google_sheet_row, $state, $kind, $parent_sku);
             }
         } catch (Exception $e) {
             error_log('WC_GS_Sync: Fatal batch error for ' . $sync_id . ': ' . $e->getMessage());
@@ -608,7 +662,29 @@ class WC_GS_Sync_Handler {
      * Process one row into the accumulated sync state (extracted from the old
      * inline loop so it can run across separate background batches).
      */
-    private function process_row_into_state($headers, $row, $google_sheet_row, &$state) {
+    private function process_row_into_state($headers, $row, $google_sheet_row, &$state, $kind = 'simple', $parent_sku = '') {
+        // Variable products are being built in phases (see
+        // docs/VARIABLE_PRODUCTS_PLAN.md). Until the variable/variation engine
+        // lands, defer those rows with a clear message instead of mistakenly
+        // creating them as simple products. Simple rows continue as normal.
+        if ($kind === 'variable' || $kind === 'variation') {
+            $message = ($kind === 'variation')
+                ? __('Variation rows are not processed yet (variable products are in development).', 'wc-google-sheets-sync')
+                : __('Variable products are not processed yet (in development).', 'wc-google-sheets-sync');
+            $state['errors'][] = array(
+                'row' => $google_sheet_row,
+                'message' => $message,
+            );
+            $state['skipped']++;
+            $state['sync_results'][$google_sheet_row] = array(
+                'status' => 'error',
+                'action' => 'failed',
+                'product_id' => null,
+                'error' => $message,
+            );
+            return;
+        }
+
         // Tombstone: a row already marked "deleted" in its Sync Status is skipped
         // and left completely untouched (no processing, no write-back), so a
         // deleted product is not recreated on the next sync. To bring it back,
