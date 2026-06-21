@@ -1476,7 +1476,12 @@ class WC_GS_Sync_Handler {
 			$new_hash = $this->compute_product_hash($product_data);
 			$old_hash = $existing_product->get_meta('_wc_gs_data_hash');
 
-			if (!$force_update && !$had_empty_id && $old_hash !== '' && $old_hash === $new_hash) {
+			// Never skip when the matched product is a different type than the sheet
+			// now says (e.g. it is variable but the row says simple) — the type
+			// change isn't part of the data hash, so it must be detected here.
+			$type_matches = ($existing_product->get_type() === 'simple');
+
+			if (!$force_update && !$had_empty_id && $type_matches && $old_hash !== '' && $old_hash === $new_hash) {
 				error_log('WC_GS_Sync: Row ' . $row_number . ' - no changes, skipping update');
 				return array(
 					'action'       => 'skipped',
@@ -1485,6 +1490,13 @@ class WC_GS_Sync_Handler {
 					'row_number'   => $row_number,
 					'match_method' => $match_method,
 				);
+			}
+
+			// If the matched product is a different type (e.g. it was variable and
+			// the sheet now says simple), convert it to a simple product first —
+			// removing any variations — so the update applies as a simple product.
+			if (!$type_matches) {
+				$existing_product = $this->convert_product_to_simple($existing_product);
 			}
 
 			// Now update the product with sheet data
@@ -1714,6 +1726,31 @@ class WC_GS_Sync_Handler {
         $this->apply_post_visibility($product_id, $product_data);
 
         return array('action' => $action, 'product_id' => $product_id);
+    }
+
+    /**
+     * Convert a non-simple product (e.g. a variable product whose sheet row now
+     * says Type = simple) into a simple product: remove its variations (a simple
+     * product has none), switch the product_type taxonomy, and return a fresh
+     * WC_Product_Simple for the same ID so the caller can apply the row's data.
+     */
+    private function convert_product_to_simple($product) {
+        $product_id = $product->get_id();
+
+        // Variable products carry child variations that must not linger.
+        if ($product->is_type('variable')) {
+            foreach ($product->get_children() as $child_id) {
+                $child = wc_get_product($child_id);
+                if ($child) {
+                    $child->delete(true);
+                }
+            }
+        }
+
+        wp_set_object_terms($product_id, 'simple', 'product_type');
+        error_log('WC_GS_Sync: Converted product ' . (int) $product_id . ' to simple');
+
+        return new WC_Product_Simple($product_id);
     }
 
     /**

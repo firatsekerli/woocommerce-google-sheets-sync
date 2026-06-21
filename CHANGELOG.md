@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notice; editing already-connected sheets is always allowed.
 
 ### Fixed
+- **Changing a product's Type now takes effect.** Switching a row from `variable`
+  to `simple` (or vice-versa) was ignored when nothing else changed, because the
+  change-detection hash excludes Type, and the simple-update path never converted
+  the product type. The sync now detects a type mismatch on the matched product
+  and converts it (variable→simple removes its variations; simple→variable was
+  already handled).
 - **Delete = yes now moves a product to Trash instead of deleting it
   permanently.** The deletion used `wp_delete_post($id, false)`, which only
   trashes the built-in post/page types — for the `product` custom type it deletes
