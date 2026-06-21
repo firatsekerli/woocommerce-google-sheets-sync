@@ -2212,10 +2212,38 @@ class WC_GS_Sync_Handler {
 
 		$subset = array();
 		foreach ($keys as $k) {
-			$subset[$k] = isset($product_data[$k]) ? $product_data[$k] : null;
+			$v = isset($product_data[$k]) ? $product_data[$k] : null;
+			// Canonicalize so a value missing on a new product (the data is cleaned
+			// of empties when the ID is blank) hashes the same as the same value
+			// present-but-empty on an update. Without this, a product created from
+			// the sheet would spuriously re-"update" on the next sync.
+			$subset[$k] = $this->canonicalize_for_hash($v);
 		}
 
 		return md5(wp_json_encode($subset));
+	}
+
+	/**
+	 * Recursively strip empty strings, nulls and empty arrays (mirroring
+	 * clean_object) so two representations of the same data — one cleaned for a
+	 * new product, one raw for an update — produce an identical hash. `false` is
+	 * preserved so booleans remain meaningful.
+	 */
+	private function canonicalize_for_hash($v) {
+		if (is_array($v)) {
+			$out = array();
+			foreach ($v as $k => $item) {
+				$c = $this->canonicalize_for_hash($item);
+				if ($c !== null) {
+					$out[$k] = $c;
+				}
+			}
+			return empty($out) ? null : $out;
+		}
+		if ($v === '' || $v === null) {
+			return null;
+		}
+		return $v;
 	}
 
 	/**

@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notice; editing already-connected sheets is always allowed.
 
 ### Fixed
+- **A product created from the sheet no longer spuriously re-"updates" on the
+  next sync.** The change-detection hash treated a value missing on a new product
+  (empties are stripped when the ID is blank) differently from the same value
+  present-but-empty on an update, so freshly created products always showed as
+  "updated" once. The hash now canonicalizes empties recursively. *(One-time
+  effect on upgrade: the first sync after updating may show existing products as
+  updated as their stored hash is recomputed, then it settles.)*
 - **Changing a product's Type now takes effect.** Switching a row from `variable`
   to `simple` (or vice-versa) was ignored when nothing else changed, because the
   change-detection hash excludes Type, and the simple-update path never converted
