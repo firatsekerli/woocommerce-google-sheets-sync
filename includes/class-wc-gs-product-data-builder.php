@@ -134,6 +134,36 @@ class WC_GS_Product_Data_Builder {
             'delete' => $get("Delete")
         );
 
+        // === VIRTUAL / DOWNLOADABLE ===
+        // These columns are optional. When a column is absent we store null so the
+        // sync step leaves the product's current value untouched (most existing
+        // sheets won't have them); when present, the sheet is the source of truth.
+        $has_col = function($name) use ($headers) {
+            return array_search($name, $headers) !== false;
+        };
+
+        $product_data['virtual'] = $has_col("Virtual")
+            ? in_array(strtolower($get("Virtual")), array('yes', 'y', 'true', '1'), true)
+            : null;
+
+        $product_data['downloadable'] = $has_col("Downloadable")
+            ? in_array(strtolower($get("Downloadable")), array('yes', 'y', 'true', '1'), true)
+            : null;
+
+        // Download files: "Name | URL" per file, files separated by new lines or ";".
+        // An empty cell (column present) means "no files" and clears them on sync.
+        $product_data['downloads'] = $has_col("Download Files")
+            ? $this->parse_downloads($get("Download Files"))
+            : null;
+
+        // Download limit / expiry: blank = unlimited / never (-1 in WooCommerce).
+        $product_data['download_limit'] = $has_col("Download Limit")
+            ? ($is_empty("Download Limit") ? -1 : intval($get("Download Limit")))
+            : null;
+        $product_data['download_expiry'] = $has_col("Download Expiry")
+            ? ($is_empty("Download Expiry") ? -1 : intval($get("Download Expiry")))
+            : null;
+
         // Add stock quantity only if stock management is enabled
         if ($product_data['manage_stock']) {
             $product_data['stock_quantity'] = intval($get("Quantity")) ?: 0;
@@ -245,6 +275,51 @@ class WC_GS_Product_Data_Builder {
         }
 
         return $attributes;
+    }
+
+    /**
+     * Parse the "Download Files" cell into an array of downloadable files.
+     *
+     * Format: one file per line (or separated by ";"), each as "Name | URL".
+     * If a file omits the "Name |" part, the file name is derived from the URL.
+     * Returns an array of array('name' => ..., 'file' => ...); an empty cell
+     * returns an empty array (which clears the product's downloads on sync).
+     */
+    private function parse_downloads($raw) {
+        $downloads = array();
+        if ($raw === '' || $raw === null) {
+            return $downloads;
+        }
+
+        $items = preg_split('/[\r\n;]+/', $raw);
+        foreach ($items as $item) {
+            $item = trim($item);
+            if ($item === '') {
+                continue;
+            }
+
+            if (strpos($item, '|') !== false) {
+                list($name, $url) = array_map('trim', explode('|', $item, 2));
+            } else {
+                $name = '';
+                $url = $item;
+            }
+
+            if ($url === '') {
+                continue;
+            }
+
+            if ($name === '') {
+                $name = basename((string) parse_url($url, PHP_URL_PATH));
+                if ($name === '' || $name === false) {
+                    $name = $url;
+                }
+            }
+
+            $downloads[] = array('name' => $name, 'file' => $url);
+        }
+
+        return $downloads;
     }
 
     /**

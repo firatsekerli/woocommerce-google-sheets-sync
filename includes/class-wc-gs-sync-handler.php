@@ -247,7 +247,8 @@ class WC_GS_Sync_Handler {
         return array(
             'ID', 'SKU', 'GTIN, UPC, EAN, or ISBN', 'Stock Management', 'Quantity',
             'Stock Status', 'Backorder', 'Low Stock Threshold', 'Sold Individually',
-            'Name', 'Description', 'Short Description', 'Type', 'Status', 'Visibility',
+            'Name', 'Description', 'Short Description', 'Type', 'Virtual', 'Downloadable',
+            'Download Files', 'Download Limit', 'Download Expiry', 'Status', 'Visibility',
             'Catalog Visibility', 'Password', 'Featured', 'Regular Price', 'Sale Price',
             'Sale Start Date', 'Sale End Date', 'Tax Status', 'Tax Class', 'Purchase Note',
             'Position', 'Allow Reviews', 'Weight', 'Dimension (L)', 'Dimension (W)',
@@ -1400,6 +1401,7 @@ class WC_GS_Sync_Handler {
 			'stock_status', 'manage_stock', 'stock_quantity', 'backorders',
 			'sold_individually', 'low_stock_amount',
 			'weight', 'dimensions', 'shipping_class',
+			'virtual', 'downloadable', 'downloads', 'download_limit', 'download_expiry',
 			'purchase_note', 'menu_order', 'reviews_allowed',
 			'upsells', 'cross_sells',
 			'categories', 'tags', 'attributes', 'meta', 'meta_data', 'images',
@@ -1797,6 +1799,52 @@ class WC_GS_Sync_Handler {
             $reviews = strtolower(trim($product_data['reviews_allowed']));
             $product->set_reviews_allowed(in_array($reviews, array('yes', 'y', '1', 'true', 'enabled', 'allow'), true));
         }
+
+        // Virtual (no shipping). The data builder stores null when the column is
+        // absent, so isset() skips it and leaves the product untouched.
+        if (isset($product_data['virtual'])) {
+            $product->set_virtual((bool) $product_data['virtual']);
+        }
+
+        // Downloadable product + its files and limits.
+        if (isset($product_data['downloadable'])) {
+            $product->set_downloadable((bool) $product_data['downloadable']);
+        }
+        if (isset($product_data['downloads'])) {
+            $product->set_downloads($this->build_download_objects($product_data['downloads']));
+        }
+        if (isset($product_data['download_limit'])) {
+            $product->set_download_limit((int) $product_data['download_limit']);
+        }
+        if (isset($product_data['download_expiry'])) {
+            $product->set_download_expiry((int) $product_data['download_expiry']);
+        }
+    }
+
+    /**
+     * Convert parsed download definitions (name/file pairs) into the
+     * WC_Product_Download objects WooCommerce expects. An empty list clears the
+     * product's downloads. The download ID is derived from the file URL so it
+     * stays stable across syncs (avoids churn in change detection).
+     */
+    private function build_download_objects($downloads) {
+        $objects = array();
+        if (empty($downloads) || !is_array($downloads)) {
+            return $objects;
+        }
+
+        foreach ($downloads as $d) {
+            if (empty($d['file'])) {
+                continue;
+            }
+            $download = new WC_Product_Download();
+            $download->set_name(isset($d['name']) ? $d['name'] : '');
+            $download->set_file($d['file']);
+            $download->set_id(md5($d['file']));
+            $objects[] = $download;
+        }
+
+        return $objects;
     }
 
     /**

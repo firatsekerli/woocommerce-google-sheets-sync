@@ -31,6 +31,11 @@ Google Sheet.
 | **Description** | Full description (HTML/text). |
 | **Short Description** | Short summary (HTML/text). |
 | **Type** | Simple products only. The cell is read but products are always managed as `simple`. Put `simple`. |
+| **Virtual** | `yes` / `true` / `1` = virtual (no shipping, e.g. a service or download); `no` / `false` / `0` / blank = physical. Optional column — omit it to leave the current value unchanged. |
+| **Downloadable** | `yes` / `true` / `1` = downloadable; `no` / `false` / `0` / blank = not downloadable. Usually paired with **Download Files**. Optional column — omit it to leave the current value unchanged. |
+| **Download Files** | One file per line (or separated by `;`), each as `Name \| URL` — e.g. `User Manual \| https://example.com/manual.pdf`. If you omit the `Name \|` part, the file name is taken from the URL. An empty cell (when the column exists) clears the product's files. |
+| **Download Limit** | Number of allowed downloads per purchase. Blank = unlimited. |
+| **Download Expiry** | Days the download link stays valid after purchase. Blank = never expires. |
 | **Status** | `publish`, `draft`, `pending`, or `private`. |
 | **Visibility** | `public`, `private`, or `password` (WordPress post visibility). `password` needs the **Password** column filled. Blank = leave Status in control. |
 | **Password** | Text; used only when Visibility = `password`. |
@@ -75,6 +80,12 @@ Google Sheet.
 - **Conflict resolution:** for SKU, GTIN and Quantity, if a product was edited in
   WooCommerce after the last sync, WooCommerce wins and the value is written back to
   the sheet. Use **Force Update** to make the sheet always win.
+- **Virtual & downloadable** are still simple products. A virtual product drops
+  shipping fields; a downloadable product serves the files in **Download Files**.
+  A product can be both (e.g. an e-book): set `Virtual = yes` and
+  `Downloadable = yes`. The `Virtual`, `Downloadable`, `Download Files`,
+  `Download Limit` and `Download Expiry` columns are all optional — leave a column
+  out entirely and the plugin won't touch that aspect of your products.
 - **Attributes** must be placed to the right of the `Attributes` marker column. Two-word
   headers are fine (e.g. `Wine Region` becomes `pa_wine-region`); the display name keeps
   its spaces. Headers that would otherwise produce the same slug (e.g. `WS` and `W&S`,

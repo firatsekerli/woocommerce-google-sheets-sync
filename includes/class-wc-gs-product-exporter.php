@@ -104,6 +104,15 @@ class WC_GS_Product_Exporter {
             case 'Description': return $product->get_description();
             case 'Short Description': return $product->get_short_description();
             case 'Type': return $product->get_type();
+            case 'Virtual': return $product->is_virtual() ? 'yes' : 'no';
+            case 'Downloadable': return $product->is_downloadable() ? 'yes' : 'no';
+            case 'Download Files': return $this->get_downloads_value($product);
+            case 'Download Limit':
+                $limit = $product->get_download_limit();
+                return ($limit === -1 || $limit === '' || $limit === null) ? '' : $limit;
+            case 'Download Expiry':
+                $expiry = $product->get_download_expiry();
+                return ($expiry === -1 || $expiry === '' || $expiry === null) ? '' : $expiry;
             case 'Status': return $product->get_status();
             case 'Visibility': return $this->get_post_visibility($product);
             case 'Catalog Visibility': return $product->get_catalog_visibility();
@@ -156,6 +165,25 @@ class WC_GS_Product_Exporter {
         }
 
         return ''; // Unknown header
+    }
+
+    /**
+     * Render the product's downloadable files as "Name | URL" lines, matching the
+     * format the importer parses from the "Download Files" cell.
+     */
+    private function get_downloads_value($product) {
+        if (!is_callable(array($product, 'get_downloads'))) {
+            return '';
+        }
+        $downloads = $product->get_downloads();
+        if (empty($downloads)) {
+            return '';
+        }
+        $parts = array();
+        foreach ($downloads as $download) {
+            $parts[] = $download->get_name() . ' | ' . $download->get_file();
+        }
+        return implode("\n", $parts);
     }
 
     /**

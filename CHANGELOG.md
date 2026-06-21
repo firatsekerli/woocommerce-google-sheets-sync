@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Virtual and downloadable simple products.** Five new optional columns:
+  `Virtual` and `Downloadable` (yes/no), plus `Download Files`
+  (`Name | URL` per line), `Download Limit` and `Download Expiry`. They flow
+  both ways (import and export), are included in change detection, and each
+  column is optional — leaving one out means the plugin won't touch that aspect.
+  A product can be both virtual and downloadable (e.g. an e-book).
 - A "Meta" marker column (mirrors "Attributes"): every column to the right of a
   `Meta` header is written as custom post meta on the product. The header is
   slugified into the meta key (never underscore-prefixed; filterable via
