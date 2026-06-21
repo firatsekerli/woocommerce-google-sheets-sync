@@ -33,7 +33,11 @@ feature work for launch.
 ## Features (paid tier / roadmap)
 
 - [ ] **Variable products support** (currently simple products only). This is the
-      main premium feature from the monetization plan.
+      main premium feature from the monetization plan. When other product types
+      (variable/grouped/external) are added, **scope the `Virtual` / `Downloadable`
+      / `Download *` columns to `Type === simple`** — those flags only exist on
+      simple products in WooCommerce. Not needed today because the plugin only ever
+      creates simple products, so those columns can't reach another type yet.
 - [ ] **Licensing / freemium layer.** Add a provider (Lemon Squeezy / Paddle /
       Freemius) and wire the gates: connected-sheet limit (hook
       `wc_gs_sync_max_sheets` already exists), variable products, and auto-sync.
