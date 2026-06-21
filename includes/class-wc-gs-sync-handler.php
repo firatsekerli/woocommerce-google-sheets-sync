@@ -1732,6 +1732,36 @@ class WC_GS_Sync_Handler {
         $had_empty_id = empty($product_data['id']);
         $action = $variation ? 'updated' : 'created';
 
+        // Force Update bypasses change detection.
+        $force_update = false;
+        $force_index = array_search('Force Update', $headers);
+        if ($force_index !== false && isset($row[$force_index])) {
+            $force_update = in_array(strtolower(trim((string) $row[$force_index])), array('yes', 'y', '1', 'true', 'force'), true);
+        }
+
+        // Change detection: if an existing variation is unchanged since the last
+        // sync, skip re-saving it — but still record it as "seen" so it is not
+        // treated as an orphan and deleted.
+        $new_hash = $this->compute_product_hash($product_data);
+        if ($variation && !$force_update) {
+            $old_hash = $variation->get_meta('_wc_gs_data_hash');
+            if ($old_hash !== '' && $old_hash === $new_hash) {
+                $vid = $variation->get_id();
+                if (!isset($state['parent_seen_variations'][$parent_id])) {
+                    $state['parent_seen_variations'][$parent_id] = array();
+                }
+                $state['parent_seen_variations'][$parent_id][] = $vid;
+                return array(
+                    'action'       => 'skipped',
+                    'product_id'   => $vid,
+                    'sku'          => $variation->get_sku(),
+                    'missing_id'   => false,
+                    'row_number'   => $row_number,
+                    'match_method' => 'variation',
+                );
+            }
+        }
+
         if (!$variation) {
             $variation = new WC_Product_Variation();
             $variation->set_parent_id($parent_id);
@@ -1844,6 +1874,11 @@ class WC_GS_Sync_Handler {
                 $variation->set_image_id($image_id);
                 $variation->save();
             }
+        }
+
+        // Persist the data hash so an unchanged variation is skipped next sync.
+        if ($variation_id) {
+            update_post_meta($variation_id, '_wc_gs_data_hash', $new_hash);
         }
 
         // Record for orphan reconciliation (variations no longer in the sheet).

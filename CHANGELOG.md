@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   virtual/downloadable, image, GTIN, description (Short Description) and
   enabled/disabled (Status). The engine processes parents before variations,
   matches variations by SKU or attribute combination, and deletes orphan
-  variations no longer in the sheet (the sheet is the source of truth). Export of
+  variations no longer in the sheet (the sheet is the source of truth). Unchanged
+  variations are skipped on re-sync (per-variation change detection). Export of
   variable products back to the sheet is still pending.
 - **Virtual and downloadable simple products.** Five new optional columns:
   `Virtual` and `Downloadable` (yes/no), plus `Download Files`

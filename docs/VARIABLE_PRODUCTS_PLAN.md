@@ -183,5 +183,9 @@ products keep working.
 - **Accidental deletion:** orphan deletion is powerful — consider a safety cap
   (e.g. refuse if it would delete an unexpectedly large share of a product's
   variations) before shipping.
+- **OPEN DECISION — parent with zero variation rows:** currently a variable parent
+  synced with no variation rows keeps its existing variations (safety: avoids a
+  partial/parent-only sync wiping everything). The strict source-of-truth
+  alternative would delete all of them. Deferred — revisit before launch.
 - **Default/enabled variation** semantics (the pre-selected variation) — handled
   in Phase B.
