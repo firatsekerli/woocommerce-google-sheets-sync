@@ -2227,17 +2227,24 @@ class WC_GS_Sync_Handler {
 
 		// Safety: never delete anything that is not a WooCommerce product/variation,
 		// even if a sheet row supplies an arbitrary post ID.
-		if (!in_array(get_post_type($product_id), array('product', 'product_variation'), true)) {
+		$post_type = get_post_type($product_id);
+		if (!in_array($post_type, array('product', 'product_variation'), true)) {
 			throw new Exception('Refusing to delete non-product post ID ' . $product_id);
 		}
 
-		$delete_result = wp_delete_post($product_id, false); // Move to trash
-    
+		// Move products to Trash (recoverable). Note: wp_delete_post($id, false)
+		// only trashes the built-in post/page types — for a custom type like
+		// `product` it deletes permanently — so go through WC_Product::delete(),
+		// which trashes when not forcing. Variations have no Trash, so force-delete
+		// those.
+		$force_delete = ($post_type === 'product_variation');
+		$delete_result = $product_to_delete->delete($force_delete);
+
 		if (!$delete_result) {
 			throw new Exception('Failed to delete product ID ' . $product_id);
 		}
-    
-		error_log('WC_GS_Sync: Row ' . $row_number . ' - DELETE SUCCESS: Product ID ' . $product_id . ' deleted');
+
+		error_log('WC_GS_Sync: Row ' . $row_number . ' - DELETE SUCCESS: Product ID ' . $product_id . ($force_delete ? ' deleted' : ' moved to Trash'));
     
 		return array(
 			'action' => 'deleted',

@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connecting a new sheet is blocked server-side and the UI shows an upgrade
   notice; editing already-connected sheets is always allowed.
 
+### Fixed
+- **Delete = yes now moves a product to Trash instead of deleting it
+  permanently.** The deletion used `wp_delete_post($id, false)`, which only
+  trashes the built-in post/page types — for the `product` custom type it deletes
+  permanently. It now goes through `WC_Product::delete()` (trash for products;
+  variations, which have no Trash, are still removed).
+
 ### Changed
 - **Google connection now uses the non-sensitive `drive.file` scope and the
   Google Picker.** Instead of browsing your whole Drive (which needed the
