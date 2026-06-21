@@ -1743,6 +1743,80 @@ class WC_GS_Sync_Handler {
             $force_update = in_array(strtolower(trim((string) $row[$force_index])), array('yes', 'y', '1', 'true', 'force'), true);
         }
 
+        // Whether the row's SKU cell was blank (so a generated SKU is written back).
+        $sku_index = array_search('SKU', $headers);
+        $had_empty_sku = !($sku_index !== false && isset($row[$sku_index]) && trim((string) $row[$sku_index]) !== '');
+
+        // Bidirectional write-back for SKU / GTIN / Quantity, mirroring simple
+        // products: if the variation was edited in WooCommerce after the last sync
+        // (e.g. stock sold), WooCommerce wins for these three and the value is
+        // written back to the variation's row instead of being overwritten.
+        $will_write_sku_back = false;
+        $will_write_gtin_back = false;
+        $will_write_quantity_back = false;
+        $current_sku_before_update = '';
+        $current_gtin_before_update = '';
+        $current_quantity_before_update = null;
+
+        if ($variation) {
+            // Original sheet values for this row.
+            $original_sku = ($sku_index !== false && isset($row[$sku_index])) ? trim((string) $row[$sku_index]) : '';
+            $original_gtin = '';
+            foreach (array('GTIN, UPC, EAN, or ISBN', 'GTIN', 'UPC', 'EAN', 'ISBN') as $gtin_col) {
+                $gi = array_search($gtin_col, $headers);
+                if ($gi !== false && isset($row[$gi])) {
+                    $original_gtin = trim((string) $row[$gi]);
+                    if ($original_gtin !== '') {
+                        break;
+                    }
+                }
+            }
+            $original_quantity = '';
+            $qi = array_search('Quantity', $headers);
+            if ($qi !== false && isset($row[$qi])) {
+                $original_quantity = trim((string) $row[$qi]);
+            }
+
+            // Current WooCommerce values before we apply the sheet.
+            $current_sku_before_update = $variation->get_sku();
+            $current_gtin_before_update = $variation->get_meta('_global_unique_id');
+            $current_quantity_before_update = $variation->get_stock_quantity();
+
+            $variation_modified = get_post_modified_time('U', false, $variation->get_id());
+            $sheet_last_synced = (int) get_option('wc_gs_sync_last_sync_time', 0);
+            $recently_modified = ($variation_modified > $sheet_last_synced) && !$force_update;
+
+            // SKU: preserve WooCommerce value when it was changed there (but never
+            // for the auto-generated-SKU case, where the sheet/generated value wins).
+            if (!($had_empty_sku && !empty($product_data['sku']))
+                && $current_sku_before_update !== $original_sku && $recently_modified) {
+                $product_data['sku'] = $current_sku_before_update;
+                $will_write_sku_back = true;
+            }
+
+            // GTIN
+            if ($current_gtin_before_update !== $original_gtin && $recently_modified && !empty($product_data['meta_data'])) {
+                foreach ($product_data['meta_data'] as &$meta_item) {
+                    if ($meta_item['key'] === '_global_unique_id') {
+                        $meta_item['value'] = $current_gtin_before_update;
+                        $will_write_gtin_back = true;
+                        break;
+                    }
+                }
+                unset($meta_item);
+            }
+
+            // Quantity
+            $current_qty_str = ($current_quantity_before_update !== null) ? strval($current_quantity_before_update) : '';
+            $original_qty_str = ($original_quantity !== '') ? strval($original_quantity) : '';
+            if ($current_qty_str !== $original_qty_str && $recently_modified) {
+                if (isset($product_data['stock_quantity'])) {
+                    $product_data['stock_quantity'] = $current_quantity_before_update;
+                }
+                $will_write_quantity_back = true;
+            }
+        }
+
         // Change detection: if an existing variation is unchanged since the last
         // sync, skip re-saving it — but still record it as "seen" so it is not
         // treated as an orphan and deleted.
@@ -1901,10 +1975,21 @@ class WC_GS_Sync_Handler {
         );
 
         // Write a generated/used SKU back if the row's SKU cell was blank.
-        $sku_index = array_search('SKU', $headers);
-        $had_empty_sku = !($sku_index !== false && isset($row[$sku_index]) && trim((string) $row[$sku_index]) !== '');
         if ($had_empty_sku && !empty($result['sku'])) {
             $result['generated_sku'] = $result['sku'];
+        }
+
+        // Bidirectional write-backs (WooCommerce value preserved above): surface
+        // them so finalize_sync writes the WooCommerce value into the row.
+        if ($will_write_sku_back) {
+            $result['generated_sku'] = $current_sku_before_update;
+        }
+        if ($will_write_quantity_back) {
+            $result['generated_quantity'] = $current_quantity_before_update;
+        }
+        if ($will_write_gtin_back) {
+            $result['gtin_changed'] = true;
+            $result['current_gtin'] = $current_gtin_before_update;
         }
 
         return $result;

@@ -81,7 +81,7 @@ if (!defined('ABSPATH')) {
             <li><strong>SKU</strong> — <?php _e('if you left it blank, an auto-generated SKU is written in.', 'wc-google-sheets-sync'); ?></li>
             <li><strong>Sync Status / Sync Error / Last Synced</strong> — <?php _e('shows whether the row synced, any error, and when.', 'wc-google-sheets-sync'); ?></li>
         </ul>
-        <p><?php _e('In addition, three fields are “two-way”: SKU, GTIN and Quantity. If you change one of these directly in WooCommerce after a sync, the next sync copies the WooCommerce value back into the sheet (WooCommerce wins for those three). Every other field flows only from the sheet to WooCommerce.', 'wc-google-sheets-sync'); ?></p>
+        <p><?php _e('In addition, three fields are “two-way”: SKU, GTIN and Quantity. If you change one of these directly in WooCommerce after a sync, the next sync copies the WooCommerce value back into the sheet (WooCommerce wins for those three). This works for variation rows too — each variation’s own SKU, GTIN and Quantity. Every other field flows only from the sheet to WooCommerce.', 'wc-google-sheets-sync'); ?></p>
     </div>
 
     <div class="wc-gs-help-card">
