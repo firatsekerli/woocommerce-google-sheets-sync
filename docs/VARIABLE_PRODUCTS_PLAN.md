@@ -150,14 +150,17 @@ products keep working.
 
 ## 8. Phased delivery
 
-- **Phase A — import core:** job classify/reorder/sheet_row refactor; data-builder
-  branching; create/update variable parents with `used_for_variations`; create/
-  update variations with the full shared field set; SKU + attribute-combo
-  matching; parent-id map in state. (No export yet.)
-- **Phase B — lifecycle:** orphan variation deletion; variation change detection +
-  write-back (variation ID/SKU/Qty/GTIN); enabled/default variation.
-- **Phase C — round-trip & ship:** export variable products; template + docs +
-  Help updates; license gate; large-catalog testing.
+- **Phase A — import core:** ✅ DONE. Job classify/reorder/sheet_row refactor;
+  data-builder branching; create/update variable parents with
+  `used_for_variations`; create/update variations with the full shared field set;
+  SKU + attribute-combo matching; parent-id map in state.
+- **Phase B — lifecycle:** ✅ DONE (mostly). Orphan variation deletion; variation
+  change detection. Deferred: per-variation bidirectional Quantity/GTIN write-back
+  (the "WooCommerce edited after last sync wins" logic simple products have);
+  default/enabled-variation pre-selection.
+- **Phase C — round-trip & ship:** export variable products ✅ DONE; docs + Help
+  ✅ DONE. Remaining: license gate (needs the licensing layer); template-sheet
+  refresh; large-catalog testing.
 
 ## 9. Files to change
 

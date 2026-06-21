@@ -114,8 +114,9 @@ if (!defined('ABSPATH')) {
             <li><?php _e('Format the GTIN / barcode column as plain text in Google Sheets, otherwise long numbers get shown in scientific notation and lose leading zeros.', 'wc-google-sheets-sync'); ?></li>
             <li><?php _e('Image columns take a full image URL. The same image is only downloaded once and reused on later syncs.', 'wc-google-sheets-sync'); ?></li>
             <li><?php _e('Use the Category Path column with “>” for sub-categories, e.g. Wine > Red Wine > Bordeaux.', 'wc-google-sheets-sync'); ?></li>
-            <li><?php _e('This version manages simple products — including virtual (no shipping) and downloadable ones.', 'wc-google-sheets-sync'); ?></li>
+            <li><?php _e('Manages simple products (including virtual and downloadable) and variable products.', 'wc-google-sheets-sync'); ?></li>
             <li><?php _e('For a downloadable product, set Downloadable = yes and list the files in the “Download Files” column as “Name | URL”, one per line. Set Virtual = yes too for pure digital goods (no shipping).', 'wc-google-sheets-sync'); ?></li>
+            <li><?php _e('For a variable product, add a parent row (Type = variable) that lists all attribute values, then one row per variation (Type = variation, Parent = the parent’s SKU) with that variation’s own price, stock and SKU. See docs/SHEET_COLUMNS.md.', 'wc-google-sheets-sync'); ?></li>
         </ul>
     </div>
 

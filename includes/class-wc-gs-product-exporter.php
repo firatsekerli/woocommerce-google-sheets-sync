@@ -17,9 +17,33 @@ if (!defined('ABSPATH')) {
 class WC_GS_Product_Exporter {
 
     /**
-     * Build a single row for a product, aligned to the sheet headers.
+     * Build all sheet rows for a product. A simple product yields one row; a
+     * variable product yields a parent row (Type = variable) followed by one row
+     * per variation (Type = variation, Parent = parent SKU).
      */
-    public function build_row($product, $headers) {
+    public function build_product_rows($product, $headers) {
+        if ($product->get_type() === 'variable') {
+            $rows = array($this->build_row($product, $headers, 'parent'));
+            foreach ($product->get_children() as $child_id) {
+                $variation = wc_get_product($child_id);
+                if ($variation && $variation->get_type() === 'variation') {
+                    $rows[] = $this->build_row($variation, $headers, 'variation');
+                }
+            }
+            return $rows;
+        }
+
+        return array($this->build_row($product, $headers, 'simple'));
+    }
+
+    /**
+     * Build a single row for a product, aligned to the sheet headers.
+     *
+     * $mode is 'simple', 'parent' (a variable product) or 'variation' (one of its
+     * variations); it controls which columns apply (variations blank the
+     * parent-only fields and map Short Description to the variation description).
+     */
+    public function build_row($product, $headers, $mode = 'simple') {
         $row = array();
 
         // Section markers: columns between "Attributes" and "Meta" are global
@@ -48,7 +72,7 @@ class WC_GS_Product_Exporter {
                 continue;
             }
 
-            $row[] = $this->get_field_value($product, $header);
+            $row[] = $this->get_field_value($product, $header, $mode);
         }
 
         return $row;
@@ -84,8 +108,39 @@ class WC_GS_Product_Exporter {
 
     /**
      * Map a known field header to the product's value.
+     *
+     * $mode is 'simple', 'parent' or 'variation'. On variation rows the
+     * parent-only columns are blank and "Short Description" carries the variation
+     * description; "Parent" carries the parent SKU.
      */
-    private function get_field_value($product, $header) {
+    private function get_field_value($product, $header, $mode = 'simple') {
+        // Parent reference: only variation rows carry it.
+        if ($header === 'Parent') {
+            if ($mode === 'variation') {
+                $parent = wc_get_product($product->get_parent_id());
+                return $parent ? $parent->get_sku() : '';
+            }
+            return '';
+        }
+
+        // On a variation row, columns that only exist at the product level are
+        // left blank (the parent row owns them).
+        if ($mode === 'variation') {
+            $parent_only = array(
+                'Name', 'Description', 'Visibility', 'Catalog Visibility', 'Password',
+                'Featured', 'Category Path', 'Tags', 'Upsells', 'Cross-sells',
+                'Sold Individually', 'Tax Status', 'Purchase Note', 'Position',
+                'Allow Reviews',
+            );
+            if (in_array($header, $parent_only, true)) {
+                return '';
+            }
+            // A variation's "Short Description" cell holds its variation description.
+            if ($header === 'Short Description') {
+                return $product->get_description();
+            }
+        }
+
         switch ($header) {
             case 'ID': return $product->get_id();
             case 'SKU': return $product->get_sku();
@@ -202,6 +257,19 @@ class WC_GS_Product_Exporter {
             return '';
         }
 
+        // A variation stores its single attribute value as meta (taxonomy => slug),
+        // not as assigned terms — resolve that slug back to the term name.
+        if ($product->get_type() === 'variation') {
+            $attrs = $product->get_attributes();
+            if (empty($attrs[$taxonomy])) {
+                return '';
+            }
+            $term = get_term_by('slug', $attrs[$taxonomy], $taxonomy);
+            return ($term && !is_wp_error($term)) ? $term->name : $attrs[$taxonomy];
+        }
+
+        // Simple product or variable parent: list the assigned terms (for a parent
+        // this is the full set of variation options).
         $terms = wp_get_post_terms($product->get_id(), $taxonomy, array('fields' => 'names'));
         if (is_wp_error($terms) || empty($terms)) {
             return '';

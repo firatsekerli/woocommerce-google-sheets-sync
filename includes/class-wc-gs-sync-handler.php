@@ -193,14 +193,16 @@ class WC_GS_Sync_Handler {
             }
         }
 
-        // Build a row for every simple product (paged to limit memory)
+        // Build rows for every simple and variable product (paged to limit
+        // memory). A variable product expands to a parent row plus one row per
+        // variation.
         $exporter = new WC_GS_Product_Exporter();
         $rows = array();
         $paged = 1;
 
         do {
             $products = wc_get_products(array(
-                'type'    => 'simple',
+                'type'    => array('simple', 'variable'),
                 'status'  => array('publish', 'draft', 'pending', 'private'),
                 'limit'   => 100,
                 'page'    => $paged,
@@ -209,7 +211,9 @@ class WC_GS_Sync_Handler {
             ));
 
             foreach ($products as $product) {
-                $rows[] = $exporter->build_row($product, $headers);
+                foreach ($exporter->build_product_rows($product, $headers) as $product_row) {
+                    $rows[] = $product_row;
+                }
             }
             $paged++;
         } while (count($products) === 100);
@@ -247,7 +251,7 @@ class WC_GS_Sync_Handler {
         return array(
             'ID', 'SKU', 'GTIN, UPC, EAN, or ISBN', 'Stock Management', 'Quantity',
             'Stock Status', 'Backorder', 'Low Stock Threshold', 'Sold Individually',
-            'Name', 'Description', 'Short Description', 'Type', 'Virtual', 'Downloadable',
+            'Name', 'Description', 'Short Description', 'Type', 'Parent', 'Virtual', 'Downloadable',
             'Download Files', 'Download Limit', 'Download Expiry', 'Status', 'Visibility',
             'Catalog Visibility', 'Password', 'Featured', 'Regular Price', 'Sale Price',
             'Sale Start Date', 'Sale End Date', 'Tax Status', 'Tax Class', 'Purchase Note',
