@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Sheet** also handles variable products, expanding each to a parent row plus one
   row per variation. (Gating variable products behind the paid tier is still
   pending the licensing layer.)
+- **Sync Progress now counts variations separately** from products: a new
+  "Variations" stat (7th) tallies variation rows so a variable product's
+  variations aren't conflated with the product totals (Created/Updated/Deleted/
+  Skipped now reflect products — simple + variable parents). The product/variation
+  breakdown is also written to the log.
 - **Virtual and downloadable simple products.** Five new optional columns:
   `Virtual` and `Downloadable` (yes/no), plus `Download Files`
   (`Name | URL` per line), `Download Limit` and `Download Expiry`. They flow

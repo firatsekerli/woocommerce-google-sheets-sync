@@ -369,6 +369,7 @@ class WC_GS_Sync_Handler {
             'created_products' => 0,
             'updated_products' => 0,
             'skipped_rows' => 0,
+            'variations' => 0,
             'errors' => array(),
             'current_step' => 'Initializing sync...',
             'started_at' => current_time('mysql'),
@@ -650,6 +651,7 @@ class WC_GS_Sync_Handler {
             'updated_products' => $state['updated'],
             'deleted_products' => $state['deleted'],
             'skipped_rows' => $state['skipped'],
+            'variations' => $state['variations_created'] + $state['variations_updated'] + $state['variations_deleted'] + $state['variations_skipped'],
             'errors' => $state['errors'],
             'current_step' => "Processing row {$processed} of {$total}...",
         ));
@@ -718,14 +720,18 @@ class WC_GS_Sync_Handler {
                 'error' => null,
             );
 
+            // Variation outcomes are tallied in their own counters so a variable
+            // product's variations aren't conflated with products in the totals.
+            $is_variation = ($kind === 'variation');
+
             if ($result['action'] === 'created') {
-                $state['created']++;
+                $state[$is_variation ? 'variations_created' : 'created']++;
                 $state['created_products'][$google_sheet_row] = $result['product_id'];
                 if (isset($result['generated_sku'])) {
                     $state['sku_write_backs'][$google_sheet_row] = $result['generated_sku'];
                 }
             } elseif ($result['action'] === 'updated') {
-                $state['updated']++;
+                $state[$is_variation ? 'variations_updated' : 'updated']++;
                 if (!empty($result['missing_id'])) {
                     $state['missing_ids'][$google_sheet_row] = $result['product_id'];
                 }
@@ -739,16 +745,20 @@ class WC_GS_Sync_Handler {
                     $state['gtin_write_backs'][$google_sheet_row] = $result['current_gtin'];
                 }
             } elseif ($result['action'] === 'deleted') {
-                $state['deleted']++;
+                $state[$is_variation ? 'variations_deleted' : 'deleted']++;
             } else {
-                $state['skipped']++;
+                $state[$is_variation ? 'variations_skipped' : 'skipped']++;
             }
         } catch (Exception $e) {
             $state['errors'][] = array(
                 'row' => $google_sheet_row,
                 'message' => $e->getMessage(),
             );
-            $state['skipped']++;
+            // Count a failed product row as skipped (existing behavior); a failed
+            // variation row is surfaced only in Errors, not the product totals.
+            if ($kind !== 'variation') {
+                $state['skipped']++;
+            }
             $state['sync_results'][$google_sheet_row] = array(
                 'status' => 'error',
                 'action' => 'failed',
@@ -812,6 +822,13 @@ class WC_GS_Sync_Handler {
                     'updated'      => (int) $state['updated'],
                     'deleted'      => (int) $state['deleted'],
                     'skipped'      => (int) $state['skipped'],
+                    'variations'   => (int) ($state['variations_created'] + $state['variations_updated'] + $state['variations_deleted'] + $state['variations_skipped']),
+                    'variations_breakdown' => array(
+                        'created' => (int) $state['variations_created'],
+                        'updated' => (int) $state['variations_updated'],
+                        'deleted' => (int) $state['variations_deleted'],
+                        'skipped' => (int) $state['variations_skipped'],
+                    ),
                     'error_count'  => count($state['errors']),
                     'errors'       => array_slice($state['errors'], 0, 50),
                     'total'        => isset($job['total']) ? (int) $job['total'] : 0,
@@ -837,9 +854,22 @@ class WC_GS_Sync_Handler {
         );
         error_log('WC_GS_Timing: ' . $timing_summary);
 
+        // Log the product/variation breakdown so variation activity is visible.
+        if (is_array($state)) {
+            $variations_total = (int) ($state['variations_created'] + $state['variations_updated'] + $state['variations_deleted'] + $state['variations_skipped']);
+            error_log(sprintf(
+                'WC_GS_Sync: Products — created %d, updated %d, deleted %d, skipped %d. Variations — total %d (created %d, updated %d, deleted %d, skipped %d). Errors %d.',
+                (int) $state['created'], (int) $state['updated'], (int) $state['deleted'], (int) $state['skipped'],
+                $variations_total,
+                (int) $state['variations_created'], (int) $state['variations_updated'], (int) $state['variations_deleted'], (int) $state['variations_skipped'],
+                count($state['errors'])
+            ));
+        }
+
         $this->update_sync_progress($sync_id, array(
             'status' => 'completed',
             'progress' => 100,
+            'variations' => is_array($state) ? (int) ($state['variations_created'] + $state['variations_updated'] + $state['variations_deleted'] + $state['variations_skipped']) : 0,
             'current_step' => 'Sync completed! ' . $timing_summary,
             'completed_at' => current_time('mysql'),
         ));
@@ -876,7 +906,7 @@ class WC_GS_Sync_Handler {
                     $orphan = wc_get_product($child_id);
                     if ($orphan && $orphan->get_type() === 'variation') {
                         $orphan->delete(true); // force delete (variations have no trash)
-                        $state['deleted']++;
+                        $state['variations_deleted']++;
                         error_log('WC_GS_Sync: Deleted orphan variation ' . (int) $child_id . ' of parent ' . (int) $parent_id);
                     }
                 }
@@ -900,6 +930,12 @@ class WC_GS_Sync_Handler {
             'updated' => 0,
             'deleted' => 0,
             'skipped' => 0,
+            // Variation outcomes are counted separately from products (a variable
+            // product's parent counts as a product; its variations count here).
+            'variations_created' => 0,
+            'variations_updated' => 0,
+            'variations_deleted' => 0,
+            'variations_skipped' => 0,
             'errors' => array(),
             'created_products' => array(),
             'missing_ids' => array(),

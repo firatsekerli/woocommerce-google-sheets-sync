@@ -222,6 +222,7 @@ if (isset($_GET['sheet_limit'])) {
     $lr_updated  = isset($lr['updated']) ? (int) $lr['updated'] : 0;
     $lr_deleted  = isset($lr['deleted']) ? (int) $lr['deleted'] : 0;
     $lr_skipped  = isset($lr['skipped']) ? (int) $lr['skipped'] : 0;
+    $lr_variations = isset($lr['variations']) ? (int) $lr['variations'] : 0;
     $lr_errors   = (isset($lr['errors']) && is_array($lr['errors'])) ? $lr['errors'] : array();
     $lr_errcount = isset($lr['error_count']) ? (int) $lr['error_count'] : count($lr_errors);
     ?>
@@ -286,6 +287,10 @@ if (isset($_GET['sheet_limit'])) {
             <div class="wc-gs-stat-item">
                 <span class="wc-gs-stat-label"><?php _e('Skipped:', 'wc-google-sheets-sync'); ?></span>
                 <span id="sync-skipped-rows" class="wc-gs-stat-warning"><?php echo $lr_skipped; ?></span>
+            </div>
+            <div class="wc-gs-stat-item">
+                <span class="wc-gs-stat-label" title="<?php esc_attr_e('Variations of variable products (counted separately from products)', 'wc-google-sheets-sync'); ?>"><?php _e('Variations:', 'wc-google-sheets-sync'); ?></span>
+                <span id="sync-variations" class="wc-gs-stat-info"><?php echo $lr_variations; ?></span>
             </div>
             <div class="wc-gs-stat-item">
                 <span class="wc-gs-stat-label"><?php _e('Errors:', 'wc-google-sheets-sync'); ?></span>

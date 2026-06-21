@@ -164,6 +164,7 @@ jQuery(document).ready(function($) {
         $('#sync-updated-products').text(progressData.updated_products);
         $('#sync-deleted-products').text(progressData.deleted_products || 0);
         $('#sync-skipped-rows').text(progressData.skipped_rows);
+        $('#sync-variations').text(progressData.variations || 0);
         $('#sync-error-count').text(progressData.errors ? progressData.errors.length : 0);
         
         // Update errors
@@ -214,7 +215,7 @@ jQuery(document).ready(function($) {
         $('#sync-progress-bar').css('width', '0%');
         $('#sync-progress-text').text('0%');
         $('#sync-current-step').text('Initializing sync...');
-        $('#sync-processed-rows, #sync-total-rows, #sync-created-products, #sync-updated-products, #sync-deleted-products, #sync-skipped-rows, #sync-error-count').text('0');
+        $('#sync-processed-rows, #sync-total-rows, #sync-created-products, #sync-updated-products, #sync-deleted-products, #sync-skipped-rows, #sync-variations, #sync-error-count').text('0');
         $('#sync-errors-list').empty();
         $('#sync-errors').hide();
         $('#sync-messages').empty();
@@ -238,9 +239,10 @@ jQuery(document).ready(function($) {
             <div class="notice notice-success">
                 <h4>Sync Completed Successfully!</h4>
                 <p>
-                    Created: <strong>${progressData.created_products}</strong> products, 
-                    Updated: <strong>${progressData.updated_products}</strong> products, 
-                    Skipped: <strong>${progressData.skipped_rows}</strong> rows
+                    Created: <strong>${progressData.created_products}</strong> products,
+                    Updated: <strong>${progressData.updated_products}</strong> products,
+                    Skipped: <strong>${progressData.skipped_rows}</strong> rows,
+                    Variations: <strong>${progressData.variations || 0}</strong>
                 </p>
             </div>
         `;
