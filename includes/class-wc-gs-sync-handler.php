@@ -663,28 +663,6 @@ class WC_GS_Sync_Handler {
      * inline loop so it can run across separate background batches).
      */
     private function process_row_into_state($headers, $row, $google_sheet_row, &$state, $kind = 'simple', $parent_sku = '') {
-        // Variable products are being built in phases (see
-        // docs/VARIABLE_PRODUCTS_PLAN.md). Until the variable/variation engine
-        // lands, defer those rows with a clear message instead of mistakenly
-        // creating them as simple products. Simple rows continue as normal.
-        if ($kind === 'variable' || $kind === 'variation') {
-            $message = ($kind === 'variation')
-                ? __('Variation rows are not processed yet (variable products are in development).', 'wc-google-sheets-sync')
-                : __('Variable products are not processed yet (in development).', 'wc-google-sheets-sync');
-            $state['errors'][] = array(
-                'row' => $google_sheet_row,
-                'message' => $message,
-            );
-            $state['skipped']++;
-            $state['sync_results'][$google_sheet_row] = array(
-                'status' => 'error',
-                'action' => 'failed',
-                'product_id' => null,
-                'error' => $message,
-            );
-            return;
-        }
-
         // Tombstone: a row already marked "deleted" in its Sync Status is skipped
         // and left completely untouched (no processing, no write-back), so a
         // deleted product is not recreated on the next sync. To bring it back,
@@ -712,8 +690,34 @@ class WC_GS_Sync_Handler {
             $state['clear_force_update'][] = $google_sheet_row;
         }
 
+        // Variation rows are processed in a later phase (A4): they need their
+        // parent (built in this same run) and the parent's variation attributes.
+        // Until then, defer with a clear message instead of mis-creating them.
+        if ($kind === 'variation') {
+            $message = __('Variation rows are not processed yet (variable products are in development).', 'wc-google-sheets-sync');
+            $state['errors'][] = array('row' => $google_sheet_row, 'message' => $message);
+            $state['skipped']++;
+            $state['sync_results'][$google_sheet_row] = array(
+                'status' => 'error',
+                'action' => 'failed',
+                'product_id' => null,
+                'error' => $message,
+            );
+            return;
+        }
+
         try {
-            $result = $this->process_product_row($headers, $row, $google_sheet_row);
+            // Variable parents and simple products take different processors;
+            // variations (deferred above) will resolve their parent from
+            // $state['parent_ids'] once A4 lands.
+            $result = ($kind === 'variable')
+                ? $this->process_variable_parent_row($headers, $row, $google_sheet_row)
+                : $this->process_product_row($headers, $row, $google_sheet_row);
+
+            // Map this parent's SKU -> product ID so variation rows can find it.
+            if ($kind === 'variable' && !empty($result['product_id']) && !empty($result['sku'])) {
+                $state['parent_ids'][$result['sku']] = $result['product_id'];
+            }
 
             $state['sync_results'][$google_sheet_row] = array(
                 'status' => 'success',
@@ -866,6 +870,7 @@ class WC_GS_Sync_Handler {
             'sync_results' => array(),
             'clear_delete' => array(),       // rows whose Delete cell should be cleared
             'clear_force_update' => array(), // rows whose Force Update cell should be cleared
+            'parent_ids' => array(),         // variable parent SKU => product ID (for variations)
             'read_ms' => 0,                  // timing: Google Sheets read
             'dispatch_ms' => 0,              // timing: queue dispatch latency
             'process_ms' => 0,               // timing: row processing (all batches)
@@ -1462,7 +1467,179 @@ class WC_GS_Sync_Handler {
             return $result;
         }
     }
-	
+
+    /**
+     * Process a `Type = variable` row: create or update the parent variable
+     * product (product-level fields + the variation attributes), and return a
+     * result that includes the parent's final SKU so variation rows can link to
+     * it via $state['parent_ids']. Variations themselves are handled separately
+     * (Phase A4). See docs/VARIABLE_PRODUCTS_PLAN.md.
+     */
+    private function process_variable_parent_row($headers, $row, $row_number) {
+        $data_builder = new WC_GS_Product_Data_Builder();
+        $product_data = $data_builder->build_product_data($row, $headers);
+
+        // Delete handling is shared with simple products.
+        if ($this->should_delete_product($product_data)) {
+            return $this->handle_product_deletion($product_data, $row_number);
+        }
+
+        $validation = $data_builder->validate_product_data($product_data);
+        if (!$validation['is_valid']) {
+            throw new Exception('Validation failed: ' . implode(', ', $validation['errors']));
+        }
+
+        // Track whether the SKU was originally blank (so a generated one is
+        // written back to the sheet — variations reference the parent by SKU).
+        $sku_index = array_search('SKU', $headers);
+        $had_empty_sku = !($sku_index !== false && isset($row[$sku_index]) && trim((string) $row[$sku_index]) !== '');
+
+        // Force Update bypasses change detection.
+        $force_update = false;
+        $force_index = array_search('Force Update', $headers);
+        if ($force_index !== false && isset($row[$force_index])) {
+            $force_update = in_array(strtolower(trim((string) $row[$force_index])), array('yes', 'y', '1', 'true', 'force'), true);
+        }
+
+        // Match an existing product by ID, then SKU, then Name.
+        $existing_product = null;
+        $match_method = 'none';
+        $had_empty_id = empty($product_data['id']);
+
+        if (!empty($product_data['id'])) {
+            $existing_product = wc_get_product($product_data['id']);
+            $match_method = 'ID';
+        } elseif (!empty($product_data['sku'])) {
+            $pid = wc_get_product_id_by_sku($product_data['sku']);
+            if ($pid) {
+                $existing_product = wc_get_product($pid);
+                $match_method = 'SKU';
+            }
+        } elseif (!empty($product_data['name'])) {
+            $existing_product = $this->find_product_by_name($product_data['name']);
+            $match_method = 'Name';
+        }
+
+        if ($existing_product && $existing_product->get_id()) {
+            $found_product_id = $existing_product->get_id();
+
+            // Change detection: skip an unchanged, already-variable product.
+            $new_hash = $this->compute_product_hash($product_data);
+            $old_hash = $existing_product->get_meta('_wc_gs_data_hash');
+            if (!$force_update && !$had_empty_id && $old_hash !== '' && $old_hash === $new_hash
+                && $existing_product->get_type() === 'variable') {
+                return array(
+                    'action'       => 'skipped',
+                    'product_id'   => $found_product_id,
+                    'sku'          => $existing_product->get_sku(),
+                    'missing_id'   => false,
+                    'row_number'   => $row_number,
+                    'match_method' => $match_method,
+                );
+            }
+
+            $result = $this->create_or_update_variable_parent($product_data, $existing_product);
+            if (!empty($result['product_id'])) {
+                update_post_meta($result['product_id'], '_wc_gs_data_hash', $new_hash);
+            }
+            $result['missing_id'] = $had_empty_id;
+        } else {
+            $result = $this->create_or_update_variable_parent($product_data, null);
+            if (!empty($result['product_id'])) {
+                update_post_meta($result['product_id'], '_wc_gs_data_hash', $this->compute_product_hash($product_data));
+            }
+            $match_method = 'new';
+        }
+
+        $result['row_number'] = $row_number;
+        $result['match_method'] = $match_method;
+
+        // Resolve the parent's final SKU (for the parent map + SKU write-back).
+        $saved = $result['product_id'] ? wc_get_product($result['product_id']) : null;
+        $result['sku'] = $saved ? $saved->get_sku() : (isset($product_data['sku']) ? $product_data['sku'] : '');
+        if ($had_empty_sku && !empty($result['sku'])) {
+            $result['generated_sku'] = $result['sku'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Create or update a WC_Product_Variable parent from sheet data: product-level
+     * fields (reusing the shared apply logic) plus the variation attributes (the
+     * pipe-separated values on the parent row, marked "used for variations"). An
+     * existing simple product matched here is converted to a variable product.
+     * Does not create the variations — that is Phase A4.
+     */
+    private function create_or_update_variable_parent($product_data, $existing_product) {
+        if ($existing_product && $existing_product->get_id()) {
+            $product_id = $existing_product->get_id();
+            // Convert a non-variable product (e.g. simple) to variable.
+            if ($existing_product->get_type() !== 'variable') {
+                wp_set_object_terms($product_id, 'variable', 'product_type');
+            }
+            $product = new WC_Product_Variable($product_id);
+            $action = 'updated';
+        } else {
+            $product = new WC_Product_Variable();
+            $action = 'created';
+        }
+
+        $product->set_name($product_data['name']);
+
+        if (!empty($product_data['sku'])) {
+            $product->set_sku($product_data['sku']);
+        }
+        if (!empty($product_data['description'])) {
+            $product->set_description($product_data['description']);
+        }
+        if (!empty($product_data['short_description'])) {
+            $product->set_short_description($product_data['short_description']);
+        }
+        if (!empty($product_data['meta_data'])) {
+            foreach ($product_data['meta_data'] as $meta) {
+                $product->update_meta_data($meta['key'], $meta['value']);
+            }
+        }
+        // Parent-level stock status is allowed (variations usually manage their own).
+        if (!empty($product_data['stock_status'])) {
+            $product->set_stock_status($product_data['stock_status']);
+        }
+
+        // Shared product-level fields (featured, dimensions, tax status, sold
+        // individually, upsells/cross-sells, purchase note, position, reviews…).
+        $this->apply_additional_product_fields($product, $product_data);
+
+        $status = !empty($product_data['status']) ? $product_data['status'] : 'publish';
+        $product->set_status($status);
+
+        $product_id = $product->save();
+
+        // Taxonomies / media / meta (reuse the simple-product helpers).
+        if (!empty($product_data['categories'])) {
+            $this->set_product_categories($product_id, $product_data['categories']);
+        }
+        if (!empty($product_data['tags'])) {
+            $this->set_product_tags($product_id, $product_data['tags']);
+        }
+        if (!empty($product_data['images'])) {
+            $this->handle_product_images($product_id, $product_data);
+        }
+        if (!empty($product_data['meta'])) {
+            $this->set_product_meta($product_id, $product_data['meta']);
+        }
+
+        // Variation attributes: the parent lists all values; mark them
+        // "used for variations" so WooCommerce can build variations from them.
+        if (!empty($product_data['attributes'])) {
+            $this->set_product_attributes($product_id, $product_data['attributes'], true);
+        }
+
+        $this->apply_post_visibility($product_id, $product_data);
+
+        return array('action' => $action, 'product_id' => $product_id);
+    }
+
 	/**
 	 * Compute a stable hash of the meaningful product data, used to detect when a
 	 * row is unchanged so the sync can skip re-saving it. Excludes volatile fields
@@ -2004,7 +2181,7 @@ class WC_GS_Sync_Handler {
      * Creates the global attribute taxonomy and terms if needed, assigns the
      * terms to the product, and stores them as the product's attributes.
      */
-    private function set_product_attributes($product_id, $attributes_data) {
+    private function set_product_attributes($product_id, $attributes_data, $for_variation = false) {
         if (empty($attributes_data) || !is_array($attributes_data)) {
             return;
         }
@@ -2065,7 +2242,10 @@ class WC_GS_Sync_Handler {
             $wc_attribute->set_options($term_ids);
             $wc_attribute->set_position($position++);
             $wc_attribute->set_visible(true);
-            $wc_attribute->set_variation(false);
+            // On a variable parent these are the attributes the variations are
+            // built from ("used for variations"); on a simple product they are
+            // plain filtering attributes.
+            $wc_attribute->set_variation($for_variation);
 
             $product_attributes[] = $wc_attribute;
         }
