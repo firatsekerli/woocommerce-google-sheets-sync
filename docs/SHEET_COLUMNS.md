@@ -30,7 +30,7 @@ Google Sheet.
 | **Name** | Product title (required). |
 | **Description** | Full description (HTML/text). |
 | **Short Description** | Short summary (HTML/text). |
-| **Type** | Simple products only. The cell is read but products are always managed as `simple`. Put `simple`. |
+| **Type** | Put `simple`. This version manages simple products. **Virtual and downloadable are not separate types** — they are simple products with a flag set, so use the `Virtual` / `Downloadable` columns for those (the Type cell stays `simple`). |
 | **Virtual** | `yes` / `true` / `1` = virtual (no shipping, e.g. a service or download); `no` / `false` / `0` / blank = physical. Optional column — omit it to leave the current value unchanged. |
 | **Downloadable** | `yes` / `true` / `1` = downloadable; `no` / `false` / `0` / blank = not downloadable. Usually paired with **Download Files**. Optional column — omit it to leave the current value unchanged. |
 | **Download Files** | One file per line (or separated by `;`), each as `Name \| URL` — e.g. `User Manual \| https://example.com/manual.pdf`. If you omit the `Name \|` part, the file name is taken from the URL. An empty cell (when the column exists) clears the product's files. |
