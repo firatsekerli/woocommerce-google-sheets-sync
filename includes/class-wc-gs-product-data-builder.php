@@ -376,6 +376,35 @@ class WC_GS_Product_Data_Builder {
     }
 
     /**
+     * Normalize the "Type" column to a supported product kind.
+     * Anything that isn't an explicit `variable` or `variation` is `simple`
+     * (the only type managed today; variable/variation are handled by the
+     * variable-products feature — see docs/VARIABLE_PRODUCTS_PLAN.md).
+     */
+    public static function normalize_type($value) {
+        $type = strtolower(trim((string) $value));
+        return in_array($type, array('variable', 'variation'), true) ? $type : 'simple';
+    }
+
+    /**
+     * Classify a sheet row for the sync engine: its product kind and, for
+     * variation rows, the parent product's SKU (the `Parent` column). Used when
+     * building the job so parents can be processed before their variations.
+     * Returns array('kind' => 'simple'|'variable'|'variation', 'parent_sku' => string).
+     */
+    public static function classify_row($row, $headers) {
+        $get = function ($name) use ($row, $headers) {
+            $i = array_search($name, $headers);
+            return ($i !== false && isset($row[$i])) ? trim((string) $row[$i]) : '';
+        };
+
+        $kind = self::normalize_type($get('Type'));
+        $parent_sku = ($kind === 'variation') ? $get('Parent') : '';
+
+        return array('kind' => $kind, 'parent_sku' => $parent_sku);
+    }
+
+    /**
      * Build meta data (GTIN field)
      */
     private function build_meta_data($row, $headers, $is_empty) {
