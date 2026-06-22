@@ -67,7 +67,7 @@ Google Sheet.
 | **Force Update** | Blank normally; `yes` / `y` / `1` / `true` / `force` = sheet overrides WooCommerce (skips conflict protection for SKU/GTIN/Quantity). |
 | **Delete** | `yes` / `y` / `1` / `true` / `delete` = move the product to Trash. |
 | **Image** | Full image URL (the featured image). |
-| **Gallery Image 01–08** | Full image URLs (positions 1–8). |
+| **Gallery Image 01–20** | Full image URLs (gallery positions 1–20). Headers are zero-padded to two digits (`Gallery Image 01` … `Gallery Image 20`). |
 | **Image Alt Text** / **Gallery Image NN Alt Text** | Optional alt text for the corresponding image. |
 | **Attributes** | Marker column — leave its cells blank. Columns to its right (up to a `Meta` marker, or the end) become global attributes (`pa_*`) used for filtering. |
 | *(columns between Attributes and Meta, e.g. Country, Region…)* | Header = attribute name; cell = one or more values (comma / semicolon / pipe separated). Creates filterable global attributes. |

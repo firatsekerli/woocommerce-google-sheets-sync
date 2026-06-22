@@ -207,12 +207,15 @@ class WC_GS_Product_Data_Builder {
                 array('src' => $featured_image, 'position' => 0, 'alt' => $get("Image Alt Text"));
         }
 
-        // Gallery images (positions 1-8)
-        $gallery_columns = [
-            "Gallery Image 01", "Gallery Image 02", "Gallery Image 03", "Gallery Image 04",
-            "Gallery Image 05", "Gallery Image 06", "Gallery Image 07", "Gallery Image 08"
-        ];
-        
+        // Gallery images (positions 1-20). Column headers are zero-padded to two
+        // digits, e.g. "Gallery Image 01" … "Gallery Image 20". Filterable count
+        // via `wc_gs_gallery_image_count`.
+        $gallery_count = (int) apply_filters('wc_gs_gallery_image_count', 20);
+        $gallery_columns = array();
+        for ($n = 1; $n <= $gallery_count; $n++) {
+            $gallery_columns[] = sprintf('Gallery Image %02d', $n);
+        }
+
         foreach ($gallery_columns as $index => $col) {
             $url = $get($col);
             if ($url && filter_var($url, FILTER_VALIDATE_URL)) {

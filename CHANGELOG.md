@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Gallery images extended to 20** (was 8): `Gallery Image 01` … `Gallery Image 20`
+  (each with an optional `… Alt Text` column). The count is filterable via
+  `wc_gs_gallery_image_count`. Export already handles any number of gallery columns.
 - **`Slug` column.** Sets the product URL slug (`post_name`). If filled it is used
   (lowercased/hyphenated); if blank, the slug is derived from the product Name.
   Duplicate slugs get `-2`, `-3`… appended automatically (via
