@@ -28,6 +28,7 @@ Google Sheet.
 | **Low Stock Threshold** | Optional number. Only allowed if Stock Management = yes. |
 | **Sold Individually** | `yes` / `true` / `1` = one per order; `no` / `false` / `0` / blank = multiple allowed. |
 | **Name** | Product title (required). |
+| **Slug** | The URL slug (`post_name`). If filled, it is used (lowercased/hyphenated); if blank, the slug is derived from the Name. Duplicates get `-2`, `-3`… appended automatically to stay unique. |
 | **Description** | Full description (HTML/text). |
 | **Short Description** | Short summary (HTML/text). |
 | **Type** | `simple` (default), `variable` (a parent with variations), or `variation` (one variation of a variable parent). **Virtual and downloadable are not types** — they are flags on a simple/variation product (use the `Virtual` / `Downloadable` columns). See "Variable products" below. |

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Slug` column.** Sets the product URL slug (`post_name`). If filled it is used
+  (lowercased/hyphenated); if blank, the slug is derived from the product Name.
+  Duplicate slugs get `-2`, `-3`… appended automatically (via
+  `wp_unique_post_slug`) so they stay unique. Included in change detection.
 - **Variable products (import).** A variable product is a parent row
   (`Type = variable`) plus one row per variation (`Type = variation`, `Parent` =
   the parent SKU), linked by SKU. The parent row defines the variation attributes

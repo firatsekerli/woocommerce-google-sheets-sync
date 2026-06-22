@@ -98,6 +98,7 @@ class WC_GS_Product_Data_Builder {
             'sku' => $this->generate_sku_if_missing($get("SKU"), $get("Name")),
             'meta_data' => $this->build_meta_data($row, $headers, $is_empty),
             'name' => $get("Name"),
+            'slug' => $get("Slug"),
             'description' => $get("Description"),
             'short_description' => $get("Short Description"),
             'type' => strtolower($get("Type", "simple")),

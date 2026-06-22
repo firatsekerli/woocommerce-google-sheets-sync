@@ -1674,6 +1674,7 @@ class WC_GS_Sync_Handler {
         }
 
         $product->set_name($product_data['name']);
+        $this->apply_product_slug($product, $product_data);
 
         if (!empty($product_data['sku'])) {
             $product->set_sku($product_data['sku']);
@@ -2197,7 +2198,7 @@ class WC_GS_Sync_Handler {
 	 */
 	private function compute_product_hash($product_data) {
 		$keys = array(
-			'name', 'description', 'short_description', 'sku',
+			'name', 'slug', 'description', 'short_description', 'sku',
 			'regular_price', 'sale_price', 'date_on_sale_from', 'date_on_sale_to',
 			'status', 'catalog_visibility', 'visibility', 'post_password', 'featured',
 			'tax_status', 'tax_class',
@@ -2347,6 +2348,7 @@ class WC_GS_Sync_Handler {
         
         // Set basic data
         $product->set_name($product_data['name']);
+        $this->apply_product_slug($product, $product_data);
         
         if (!empty($product_data['sku'])) {
             $product->set_sku($product_data['sku']);
@@ -2449,6 +2451,7 @@ class WC_GS_Sync_Handler {
     private function update_product($product, $product_data) {
         // Update basic data
         $product->set_name($product_data['name']);
+        $this->apply_product_slug($product, $product_data);
         
         if (!empty($product_data['description'])) {
             $product->set_description($product_data['description']);
@@ -2547,6 +2550,34 @@ class WC_GS_Sync_Handler {
             'product_id' => $product_id,
             'missing_id' => false // NEW: Will be set to true in process_product_row if ID was missing
         );
+    }
+
+    /**
+     * Set the product slug (post_name) from the sheet.
+     *
+     * If the "Slug" column is filled it is used; otherwise the slug is derived
+     * from the product Name. WordPress's wp_unique_post_slug() then guarantees
+     * uniqueness, appending -2, -3… when the slug is already taken by another
+     * product (so identical names/slugs don't collide). Not applied to variations
+     * (their slug is internal).
+     */
+    private function apply_product_slug($product, $product_data) {
+        if ($product->is_type('variation')) {
+            return;
+        }
+
+        $base = '';
+        if (!empty($product_data['slug'])) {
+            $base = sanitize_title($product_data['slug']);
+        } elseif (!empty($product_data['name'])) {
+            $base = sanitize_title($product_data['name']);
+        }
+        if ($base === '') {
+            return;
+        }
+
+        $unique = wp_unique_post_slug($base, (int) $product->get_id(), 'publish', 'product', 0);
+        $product->set_slug($unique);
     }
 
     /**
