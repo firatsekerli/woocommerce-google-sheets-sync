@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notice; editing already-connected sheets is always allowed.
 
 ### Fixed
+- **Image alt text is now applied.** The `Image Alt Text` and
+  `Gallery Image NN Alt Text` columns were read from the sheet but never written
+  to the media attachment. They now set `_wp_attachment_image_alt` on the featured,
+  gallery and variation images (for both newly uploaded and existing/matched
+  images); a blank cell leaves the existing alt unchanged. Round-trips with export.
 - **A product created from the sheet no longer spuriously re-"updates" on the
   next sync.** The change-detection hash treated a value missing on a new product
   (empties are stripped when the ID is blank) differently from the same value

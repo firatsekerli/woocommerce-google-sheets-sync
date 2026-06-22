@@ -202,9 +202,9 @@ class WC_GS_Product_Data_Builder {
         $featured_image = $get("Image");
         if ($featured_image && filter_var($featured_image, FILTER_VALIDATE_URL)) {
             $existing_id = $this->get_media_id_if_exists($featured_image);
-            $images[] = $existing_id ? 
-                array('id' => $existing_id, 'position' => 0) : 
-                array('src' => $featured_image, 'position' => 0, 'alt' => $get("Image Alt Text"));
+            $images[] = $existing_id
+                ? array('id' => $existing_id, 'position' => 0, 'alt' => $get("Image Alt Text"))
+                : array('src' => $featured_image, 'position' => 0, 'alt' => $get("Image Alt Text"));
         }
 
         // Gallery images (positions 1-20). Column headers are zero-padded to two
@@ -220,9 +220,9 @@ class WC_GS_Product_Data_Builder {
             $url = $get($col);
             if ($url && filter_var($url, FILTER_VALIDATE_URL)) {
                 $existing_id = $this->get_media_id_if_exists($url);
-                $images[] = $existing_id ? 
-                    array('id' => $existing_id, 'position' => $index + 1) : 
-                    array('src' => $url, 'position' => $index + 1, 'alt' => $get($col . " Alt Text"));
+                $images[] = $existing_id
+                    ? array('id' => $existing_id, 'position' => $index + 1, 'alt' => $get($col . " Alt Text"))
+                    : array('src' => $url, 'position' => $index + 1, 'alt' => $get($col . " Alt Text"));
             }
         }
 

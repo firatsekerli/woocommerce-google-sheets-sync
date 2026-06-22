@@ -2178,17 +2178,24 @@ class WC_GS_Sync_Handler {
      * an attachment ID for a variation. Returns 0 if none/failed.
      */
     private function resolve_variation_image_id($image_data, $variation_id) {
+        $image_id = 0;
         if (isset($image_data['id']) && !empty($image_data['id'])) {
-            return (int) $image_data['id'];
-        }
-        if (isset($image_data['src']) && !empty($image_data['src'])) {
-            $image_id = $this->upload_image_from_url($image_data['src'], $variation_id);
-            if (!is_wp_error($image_id)) {
-                return (int) $image_id;
+            $image_id = (int) $image_data['id'];
+        } elseif (isset($image_data['src']) && !empty($image_data['src'])) {
+            $uploaded = $this->upload_image_from_url($image_data['src'], $variation_id);
+            if (is_wp_error($uploaded)) {
+                error_log('WC_GS_Sync: Failed to upload variation image: ' . $uploaded->get_error_message());
+                return 0;
             }
-            error_log('WC_GS_Sync: Failed to upload variation image: ' . $image_id->get_error_message());
+            $image_id = (int) $uploaded;
         }
-        return 0;
+
+        // Apply alt text (non-empty only) to the resolved image.
+        if ($image_id && isset($image_data['alt']) && trim((string) $image_data['alt']) !== '') {
+            update_post_meta($image_id, '_wp_attachment_image_alt', sanitize_text_field($image_data['alt']));
+        }
+
+        return $image_id;
     }
 
 	/**
@@ -3129,7 +3136,13 @@ class WC_GS_Sync_Handler {
                 error_log('WC_GS_Sync: No ID or src found for image');
                 continue; // Skip if no ID or URL
             }
-            
+
+            // Apply alt text from the sheet (non-empty only — a blank cell leaves
+            // any existing alt text unchanged).
+            if (isset($image_data['alt']) && trim((string) $image_data['alt']) !== '') {
+                update_post_meta($image_id, '_wp_attachment_image_alt', sanitize_text_field($image_data['alt']));
+            }
+
             // Assign to featured or gallery based on position
             if ($position === 0) {
                 $new_featured_id = $image_id;

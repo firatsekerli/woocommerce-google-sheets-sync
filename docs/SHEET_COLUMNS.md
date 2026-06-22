@@ -68,7 +68,7 @@ Google Sheet.
 | **Delete** | `yes` / `y` / `1` / `true` / `delete` = move the product to Trash. |
 | **Image** | Full image URL (the featured image). |
 | **Gallery Image 01–20** | Full image URLs (gallery positions 1–20). Headers are zero-padded to two digits (`Gallery Image 01` … `Gallery Image 20`). |
-| **Image Alt Text** / **Gallery Image NN Alt Text** | Optional alt text for the corresponding image. |
+| **Image Alt Text** / **Gallery Image NN Alt Text** | Optional alt text for the corresponding image; applied to the media-library attachment (`_wp_attachment_image_alt`). A blank cell leaves any existing alt text unchanged. |
 | **Attributes** | Marker column — leave its cells blank. Columns to its right (up to a `Meta` marker, or the end) become global attributes (`pa_*`) used for filtering. |
 | *(columns between Attributes and Meta, e.g. Country, Region…)* | Header = attribute name; cell = one or more values (comma / semicolon / pipe separated). Creates filterable global attributes. |
 | **Meta** | Marker column — leave its cells blank. Every column **to its right** becomes a custom field (post meta) on the product. |
