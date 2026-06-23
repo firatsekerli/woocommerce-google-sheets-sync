@@ -62,6 +62,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **Variations now display in sheet order.** WooCommerce sorts the admin Variations
+  list by `menu_order` then newest-ID-first, and the plugin never set a
+  `menu_order`, so variations appeared in the reverse of their sheet rows. Each
+  variation is now assigned a `menu_order` matching its row position under its
+  parent (applied on every sync, including to unchanged variations), so the order
+  on the product page matches the sheet. (Manually reordering variations in
+  WooCommerce will be reset to sheet order on the next sync — the sheet is the
+  source of truth.)
 - **Products with images no longer spuriously re-"update" on every re-sync.** The
   change-detection hash includes the images, but an image is represented as a
   source URL on the first sync and as a matched attachment ID once it has been

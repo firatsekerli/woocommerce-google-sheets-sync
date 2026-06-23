@@ -961,6 +961,28 @@ class WC_GS_Sync_Handler {
             }
         }
 
+        // Order each parent's variations to match the sheet. WooCommerce sorts the
+        // admin variation list by menu_order ASC then ID DESC, so without an
+        // explicit menu_order variations appear newest-first — the reverse of the
+        // sheet. parent_seen_variations holds this run's variations in sheet order
+        // (including unchanged/skipped ones), so assign menu_order by position.
+        // Only write when it actually changes, so re-syncs don't churn unchanged
+        // variations.
+        if (!empty($state['parent_seen_variations']) && is_array($state['parent_seen_variations'])) {
+            foreach ($state['parent_seen_variations'] as $seen_ids) {
+                $position = 0;
+                foreach (array_map('intval', (array) $seen_ids) as $vid) {
+                    if ($vid <= 0) {
+                        continue;
+                    }
+                    if ((int) get_post_field('menu_order', $vid) !== $position) {
+                        wp_update_post(array('ID' => $vid, 'menu_order' => $position));
+                    }
+                    $position++;
+                }
+            }
+        }
+
         // Re-sync every parent created/updated this run (price range, stock…).
         if (!empty($state['parent_ids']) && class_exists('WC_Product_Variable')) {
             foreach (array_unique(array_map('intval', array_values($state['parent_ids']))) as $pid) {
