@@ -68,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **Front-end variation dropdown now lists options in sheet order.** Variation
+  display order is set by the attribute's *term* order, which the plugin never set —
+  so the dropdown fell back to WooCommerce's default (creation/term order) and
+  didn't match the sheet, even after variations themselves were ordered. The
+  attribute's terms are now ordered (via `wc_set_term_order`) to match the order
+  their values appear in the row, so the dropdown follows the sheet. (Term order is
+  global per attribute taxonomy — if two products list the same attribute's values
+  in different orders, the most recently synced product wins.)
 - **Variations now display in sheet order.** WooCommerce sorts the admin Variations
   list by `menu_order` then newest-ID-first, and the plugin never set a
   `menu_order`, so variations appeared in the reverse of their sheet rows. Each

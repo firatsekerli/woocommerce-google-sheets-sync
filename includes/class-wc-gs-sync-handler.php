@@ -2986,6 +2986,20 @@ class WC_GS_Sync_Handler {
             // Assign the terms to the product — this is what powers attribute filtering
             wp_set_object_terms($product_id, $term_ids, $taxonomy, false);
 
+            // Order the attribute's terms to match the sheet so the front-end
+            // variation dropdown lists them in the same order as the row (the
+            // attribute is registered with order_by = menu_order / "custom
+            // ordering", which sorts the dropdown by this term order). $term_ids is
+            // already in sheet order. NOTE: term order is global per attribute
+            // taxonomy, so when products disagree the most recently synced one wins.
+            if (function_exists('wc_set_term_order')) {
+                $term_order = 0;
+                foreach ($term_ids as $ordered_term_id) {
+                    wc_set_term_order((int) $ordered_term_id, $term_order, $taxonomy);
+                    $term_order++;
+                }
+            }
+
             // Build the product attribute object
             $wc_attribute = new WC_Product_Attribute();
             $wc_attribute->set_id(wc_attribute_taxonomy_id_by_name($taxonomy));
