@@ -75,7 +75,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attribute's terms are now ordered (via `wc_set_term_order`) to match the order
   their values appear in the row, so the dropdown follows the sheet. This is also
   applied to **unchanged/skipped** rows, so the order corrects itself on a normal
-  re-sync without having to force-update every product. (Term order is global per
+  re-sync without having to force-update every product — but guarded by a per-
+  product signature so it only does work when the desired order actually changes
+  (a steady-state re-sync is a single meta read). (Term order is global per
   attribute taxonomy — if two products list the same attribute's values in
   different orders, the most recently synced product wins.)
 - **Variations now display in sheet order.** WooCommerce sorts the admin Variations

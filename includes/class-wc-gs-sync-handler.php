@@ -1567,8 +1567,9 @@ class WC_GS_Sync_Handler {
 			if (!$force_update && !$had_empty_id && $type_matches && $old_hash !== '' && $old_hash === $new_hash) {
 				error_log('WC_GS_Sync: Row ' . $row_number . ' - no changes, skipping update');
 				// Unchanged, so set_product_attributes won't run — keep the attribute
-				// term order aligned to the sheet anyway (cheap; no product save).
-				$this->ensure_attribute_term_order($product_data['attributes'] ?? array());
+				// term order aligned to the sheet anyway (guarded; no product save
+				// and a no-op once the order has been applied).
+				$this->ensure_attribute_term_order($product_data['attributes'] ?? array(), $found_product_id);
 				return array(
 					'action'       => 'skipped',
 					'product_id'   => $found_product_id,
@@ -1705,8 +1706,9 @@ class WC_GS_Sync_Handler {
                 // Unchanged, so set_product_attributes won't run — but still keep
                 // the attribute term order in sync with the sheet so the front-end
                 // variation dropdown order can be corrected without forcing a full
-                // update of every product.
-                $this->ensure_attribute_term_order($product_data['attributes'] ?? array());
+                // update of every product. Guarded so it only acts when the order
+                // actually changed.
+                $this->ensure_attribute_term_order($product_data['attributes'] ?? array(), $found_product_id);
                 return array(
                     'action'       => 'skipped',
                     'product_id'   => $found_product_id,
@@ -3034,6 +3036,9 @@ class WC_GS_Sync_Handler {
             $product->set_attributes($product_attributes);
             $product->save();
         }
+
+        // Record the applied order so the skip path doesn't re-apply it next sync.
+        update_post_meta($product_id, '_wc_gs_attr_order_sig', $this->attr_order_signature($attributes_data));
     }
 
     /**
@@ -3044,8 +3049,14 @@ class WC_GS_Sync_Handler {
      * re-update of every product. Resolves only attributes/terms that already
      * exist; anything missing is left for a real create/update to handle.
      */
-    private function ensure_attribute_term_order($attributes) {
+    private function ensure_attribute_term_order($attributes, $product_id) {
         if (empty($attributes) || !is_array($attributes) || !function_exists('wc_set_term_order')) {
+            return;
+        }
+        // Skip the work unless the desired order changed since we last applied it
+        // for this product, so a normal no-change re-sync is just one meta read.
+        $sig = $this->attr_order_signature($attributes);
+        if ($sig === '' || get_post_meta($product_id, '_wc_gs_attr_order_sig', true) === $sig) {
             return;
         }
         foreach ($attributes as $attribute) {
@@ -3071,6 +3082,27 @@ class WC_GS_Sync_Handler {
                 }
             }
         }
+        update_post_meta($product_id, '_wc_gs_attr_order_sig', $sig);
+    }
+
+    /**
+     * A stable signature of the desired attribute term order (attribute name =>
+     * ordered values) used to skip re-applying an unchanged order on every sync.
+     */
+    private function attr_order_signature($attributes) {
+        if (empty($attributes) || !is_array($attributes)) {
+            return '';
+        }
+        $sig = array();
+        foreach ($attributes as $attribute) {
+            $name = isset($attribute['name']) ? trim($attribute['name']) : '';
+            $values = isset($attribute['values']) ? array_values((array) $attribute['values']) : array();
+            if ($name === '' || empty($values)) {
+                continue;
+            }
+            $sig[$name] = $values;
+        }
+        return empty($sig) ? '' : md5(wp_json_encode($sig));
     }
 
     /**
