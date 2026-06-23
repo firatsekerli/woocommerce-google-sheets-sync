@@ -21,6 +21,7 @@ class WC_GS_Sync_Handler {
         // Register AJAX handlers
         add_action('wp_ajax_wc_gs_sync_sheet', array($this, 'handle_sync_request'));
         add_action('wp_ajax_wc_gs_get_sync_progress', array($this, 'get_sync_progress'));
+        add_action('wp_ajax_wc_gs_cancel_sync', array($this, 'cancel_sync'));
         add_action('wp_ajax_wc_gs_export_to_sheet', array($this, 'handle_export_request'));
 
         // Scheduled (auto) sync via WP-Cron
@@ -418,7 +419,54 @@ class WC_GS_Sync_Handler {
 
         wp_send_json_success($progress);
     }
-    
+
+    /**
+     * AJAX: cancel an in-progress sync.
+     *
+     * Cancels any queued background batches, then deletes the job/state so that a
+     * batch currently mid-flight aborts on its next step (run_sync_batch bails
+     * when the job option is gone) and finalize never runs. The progress record
+     * is marked "cancelled" so the dashboard stops polling. Products already
+     * imported are left intact; only the remaining work (and sheet write-back)
+     * stops.
+     */
+    public function cancel_sync() {
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!wp_verify_nonce($nonce, 'wc_gs_sync_nonce')) {
+            wp_send_json_error('Security check failed');
+        }
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $sync_id = isset($_POST['sync_id']) ? sanitize_text_field(wp_unslash($_POST['sync_id'])) : '';
+
+        // Cancel any queued background batches for this plugin's sync group
+        // (empty args array matches the action regardless of sync_id/offset).
+        if (function_exists('as_unschedule_all_actions')) {
+            as_unschedule_all_actions('wc_gs_process_sync_batch', array(), 'wc-gs-sync');
+        }
+
+        if ($sync_id !== '') {
+            delete_option('wc_gs_sync_job_' . $sync_id);
+            delete_option('wc_gs_sync_state_' . $sync_id);
+
+            $progress = get_transient('wc_gs_sync_progress_' . $sync_id);
+            if (!is_array($progress)) {
+                $progress = array();
+            }
+            $progress['status'] = 'cancelled';
+            $progress['current_step'] = 'Sync cancelled.';
+            $progress['completed_at'] = current_time('mysql');
+            set_transient('wc_gs_sync_progress_' . $sync_id, $progress, HOUR_IN_SECONDS);
+
+            error_log('WC_GS_Sync: Sync ' . $sync_id . ' cancelled by user');
+        }
+
+        wp_send_json_success(array('message' => 'Sync cancelled.'));
+    }
+
     /**
      * Start a sync in the background. Reads the sheet once, stores the job, and
      * enqueues the first batch (processed via Action Scheduler, or inline if AS
@@ -1136,14 +1184,21 @@ class WC_GS_Sync_Handler {
             
             error_log('WC_GS_Sync: Prepared ' . count($updates) . ' total updates for batch write');
 
-            // Write back to sheet in batches, honoring the configured throttle settings:
-            // batch_size = number of cell ranges per request, rate_limit_delay = pause
-            // between requests (ms), max_retries = attempts per failed batch.
-            $batch_size = max(1, (int) $this->get_setting('batch_size', 10));
+            // Write back in a few LARGE batchUpdate requests. The Google Sheets
+            // values.batchUpdate endpoint accepts many ranges in a single request,
+            // so there is no need to split into one-request-per-handful and sleep
+            // between them — that turned a few-second job into hundreds of throttled
+            // calls that ran past Action Scheduler's per-action time limit and got
+            // killed mid-write-back. We send up to ~500 ranges per request with NO
+            // inter-request delay on success; a pause happens only when retrying an
+            // actual failure (e.g. a 429 rate-limit error).
+            $chunk_ranges = max(1, (int) apply_filters('wc_gs_writeback_chunk_size', 500));
             $delay_ms = max(0, (int) $this->get_setting('rate_limit_delay', 1000));
             $max_retries = max(1, (int) $this->get_setting('max_retries', 3));
 
-            $chunks = array_chunk($updates, $batch_size);
+            $chunks = array_chunk($updates, $chunk_ranges);
+            $chunk_count = count($chunks);
+            $total_updates = count($updates);
             $written = 0;
             $had_error = false;
 
@@ -1154,7 +1209,8 @@ class WC_GS_Sync_Handler {
                     if (!is_wp_error($write_result)) {
                         break;
                     }
-                    error_log('WC_GS_Sync: Write-back batch ' . ($chunk_index + 1) . ' attempt ' . $attempt . ' of ' . $max_retries . ' failed: ' . $write_result->get_error_message());
+                    error_log('WC_GS_Sync: Write-back batch ' . ($chunk_index + 1) . ' of ' . $chunk_count . ' attempt ' . $attempt . ' of ' . $max_retries . ' failed: ' . $write_result->get_error_message());
+                    // Back off only on a real failure (rate limit / transient error).
                     if ($attempt < $max_retries && $delay_ms > 0) {
                         usleep($delay_ms * 1000);
                     }
@@ -1167,10 +1223,15 @@ class WC_GS_Sync_Handler {
                     $written += count($chunk);
                 }
 
-                // Pause between batches to respect the rate limit
-                if ($delay_ms > 0 && $chunk_index < count($chunks) - 1) {
-                    usleep($delay_ms * 1000);
-                }
+                // Keep the panel visibly alive during write-back. There is no
+                // per-request sleep on success, so this is just a status refresh.
+                $this->update_sync_progress($sync_id, array(
+                    'current_step' => sprintf(
+                        'Writing results back to sheet… (%d of %d cells)',
+                        $written,
+                        $total_updates
+                    ),
+                ));
             }
 
             if ($had_error) {

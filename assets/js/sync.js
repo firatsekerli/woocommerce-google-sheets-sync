@@ -5,7 +5,60 @@
  */
 
 jQuery(document).ready(function($) {
-    
+
+    // Track the running sync so the Cancel button can stop it.
+    var activeSyncId = null;
+    var activeProgressInterval = null;
+    var activeSyncButton = null;
+
+    /**
+     * Reset the "active sync" tracking and hide the Cancel button.
+     */
+    function clearActiveSync() {
+        if (activeProgressInterval) {
+            clearInterval(activeProgressInterval);
+        }
+        activeSyncId = null;
+        activeProgressInterval = null;
+        activeSyncButton = null;
+        $('#wc-gs-cancel-sync').hide();
+    }
+
+    // Handle "Cancel Sync" clicks
+    $('#wc-gs-cancel-sync').on('click', function(e) {
+        e.preventDefault();
+        if (!activeSyncId) {
+            return;
+        }
+        if (!confirm('Cancel the running sync? Products already imported will stay; the remaining work and sheet write-back will stop.')) {
+            return;
+        }
+
+        var cancelBtn = $(this);
+        var button = activeSyncButton;
+        var syncId = activeSyncId;
+        cancelBtn.prop('disabled', true).text('Cancelling...');
+
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'wc_gs_cancel_sync',
+                sync_id: syncId,
+                nonce: wc_gs_sync_nonce
+            },
+            complete: function() {
+                clearActiveSync();
+                $('#sync-current-step').text('Sync cancelled.');
+                hideInlineProgress();
+                if (button) {
+                    button.prop('disabled', false).text('Sync Now');
+                }
+                cancelBtn.prop('disabled', false).text('Cancel Sync');
+            }
+        });
+    });
+
     // Handle sync button clicks
     $('.wc-gs-sync-sheet').on('click', function(e) {
         e.preventDefault();
@@ -125,25 +178,31 @@ jQuery(document).ready(function($) {
                         updateProgressDisplay(response.data);
                         
                         // Check if sync is complete
-                        if (response.data.status === 'completed' || response.data.status === 'error') {
+                        if (response.data.status === 'completed' || response.data.status === 'error' || response.data.status === 'cancelled') {
                             clearInterval(progressInterval);
                             handleSyncComplete(response.data, button);
                         }
                     } else {
-                        clearInterval(progressInterval);
+                        clearActiveSync();
                         showSyncError('Failed to get sync progress');
                         button.prop('disabled', false).text('Sync Now');
                         hideInlineProgress();
                     }
                 },
                 error: function() {
-                    clearInterval(progressInterval);
+                    clearActiveSync();
                     showSyncError('Failed to track sync progress');
                     button.prop('disabled', false).text('Sync Now');
                     hideInlineProgress();
                 }
             });
         }, 1000); // Check every second
+
+        // Expose the running sync to the Cancel button.
+        activeSyncId = syncId;
+        activeProgressInterval = progressInterval;
+        activeSyncButton = button;
+        $('#wc-gs-cancel-sync').show();
     }
     
     /**
@@ -184,10 +243,8 @@ jQuery(document).ready(function($) {
      */
     function handleSyncComplete(progressData, button) {
         button.prop('disabled', false).text('Sync Now');
-        
-        // DEBUG: Log the progress data
-        console.log('handleSyncComplete called with:', progressData);
-        
+        clearActiveSync();
+
         if (progressData.status === 'completed') {
             showSyncSuccess(progressData);
 
@@ -197,6 +254,9 @@ jQuery(document).ready(function($) {
                 setTimeout(function() { location.reload(); }, 2000);
             }
             // If there are errors, leave the inline panel visible so they stay on screen.
+        } else if (progressData.status === 'cancelled') {
+            // Cancelled by the user — leave the "Sync cancelled." step visible.
+            hideInlineProgress();
         } else {
             showSyncError('Sync failed: ' + progressData.current_step);
         }

@@ -250,6 +250,12 @@ if (isset($_GET['sheet_limit'])) {
             ?>
         </p>
 
+        <p>
+            <button type="button" id="wc-gs-cancel-sync" class="button button-secondary" style="display: none;">
+                <?php esc_html_e('Cancel Sync', 'wc-google-sheets-sync'); ?>
+            </button>
+        </p>
+
         <?php
         $tm = (isset($lr['timing']) && is_array($lr['timing'])) ? $lr['timing'] : null;
         if ($tm):

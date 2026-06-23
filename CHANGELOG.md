@@ -55,8 +55,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unlimited) for a future Pro/free split. When a limit is set and reached,
   connecting a new sheet is blocked server-side and the UI shows an upgrade
   notice; editing already-connected sheets is always allowed.
+- **"Cancel Sync" button** in the Sync Progress panel. It cancels any queued
+  background batches and removes the job/state so a batch mid-flight aborts and
+  finalize never runs, then marks the run "cancelled" and stops the live updates.
+  Products already imported are left intact; only the remaining work and sheet
+  write-back stop.
 
 ### Fixed
+- **Write-back to the sheet is no longer slow enough to be killed mid-run.** After
+  a large import, write-back split the cell updates into chunks of `Batch Size`
+  ranges and slept `rate_limit_delay` (1s) between *every* chunk — hundreds of tiny
+  throttled API calls that took many minutes and ran past Action Scheduler's
+  per-action time limit, so the final batch was "marked as failed after 300
+  seconds" with only part of the sheet updated. Write-back now sends up to ~500
+  ranges per `values.batchUpdate` request (one API call handles many cells) with no
+  inter-request delay on success (it only backs off when retrying a real failure),
+  and reports live "Writing results back to sheet… (X of Y cells)" progress. The
+  per-request size is filterable via `wc_gs_writeback_chunk_size`.
 - **Image alt text is now applied.** The `Image Alt Text` and
   `Gallery Image NN Alt Text` columns were read from the sheet but never written
   to the media attachment. They now set `_wp_attachment_image_alt` on the featured,
