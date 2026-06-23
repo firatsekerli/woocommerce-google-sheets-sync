@@ -55,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unlimited) for a future Pro/free split. When a limit is set and reached,
   connecting a new sheet is blocked server-side and the UI shows an upgrade
   notice; editing already-connected sheets is always allowed.
+- **Per-attribute control via header flag tags.** An attribute column header can
+  carry bracketed tags to control that attribute: `[hidden]` keeps it off the
+  product page, `[no-vary]` keeps it from driving variations on a variable product
+  (combinable, e.g. `Material [hidden][no-vary]`). The tags are stripped from the
+  attribute name; with no tags the previous defaults apply (visible, and used for
+  variations on a variable parent). The tags round-trip through Export.
 - **"Cancel Sync" button** in the Sync Progress panel. It cancels any queued
   background batches and removes the job/state so a batch mid-flight aborts and
   finalize never runs, then marks the run "cancelled" and stops the live updates.

@@ -2992,11 +2992,18 @@ class WC_GS_Sync_Handler {
             $wc_attribute->set_name($taxonomy);
             $wc_attribute->set_options($term_ids);
             $wc_attribute->set_position($position++);
-            $wc_attribute->set_visible(true);
-            // On a variable parent these are the attributes the variations are
-            // built from ("used for variations"); on a simple product they are
-            // plain filtering attributes.
-            $wc_attribute->set_variation($for_variation);
+
+            // Visibility: visible unless the header carried a [hidden] tag.
+            $visible = !(isset($attribute['visible']) && $attribute['visible'] === false);
+            $wc_attribute->set_visible($visible);
+
+            // Used for variations: a [no-vary] tag forces it off; otherwise the
+            // default applies — on a variable parent the attributes drive the
+            // variations, on a simple product they are plain filtering attributes.
+            $use_for_variation = (isset($attribute['variation']) && $attribute['variation'] !== null)
+                ? (bool) $attribute['variation']
+                : $for_variation;
+            $wc_attribute->set_variation($use_for_variation);
 
             $product_attributes[] = $wc_attribute;
         }

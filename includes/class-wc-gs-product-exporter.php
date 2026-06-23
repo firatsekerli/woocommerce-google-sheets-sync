@@ -249,6 +249,13 @@ class WC_GS_Product_Exporter {
             return '';
         }
 
+        // Strip any [hidden] / [no-vary] flag tags so the column's values are read
+        // from the real attribute, letting tagged headers round-trip.
+        $header = WC_GS_Product_Data_Builder::parse_attribute_header($header)['name'];
+        if ($header === '') {
+            return '';
+        }
+
         // Resolve by attribute label (exact header text) to match how the
         // importer creates attributes, so collision-suffixed slugs (e.g. ws-2
         // for "W&S" alongside ws for "WS") are read from the correct taxonomy.

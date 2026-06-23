@@ -70,7 +70,7 @@ Google Sheet.
 | **Gallery Image 01–20** | Full image URLs (gallery positions 1–20). Headers are zero-padded to two digits (`Gallery Image 01` … `Gallery Image 20`). |
 | **Image Alt Text** / **Gallery Image NN Alt Text** | Optional alt text for the corresponding image; applied to the media-library attachment (`_wp_attachment_image_alt`). A blank cell leaves any existing alt text unchanged. |
 | **Attributes** | Marker column — leave its cells blank. Columns to its right (up to a `Meta` marker, or the end) become global attributes (`pa_*`) used for filtering. |
-| *(columns between Attributes and Meta, e.g. Country, Region…)* | Header = attribute name; cell = one or more values (comma / semicolon / pipe separated). Creates filterable global attributes. |
+| *(columns between Attributes and Meta, e.g. Country, Region…)* | Header = attribute name; cell = one or more values (comma / semicolon / pipe separated). Creates filterable global attributes. Optional flag tags in the header control the attribute (see below). |
 | **Meta** | Marker column — leave its cells blank. Every column **to its right** becomes a custom field (post meta) on the product. |
 | *(columns after Meta, e.g. Seat Height, Source OID…)* | Header is slugified into the meta key (`Seat Height` → `seat_height`); the cell is the value. A non-empty cell writes the meta; an **empty** cell deletes that key on re-sync. Uses ACF if a matching field is registered, otherwise plain post meta. |
 
@@ -112,3 +112,15 @@ parent's SKU (see `docs/examples/variable-test.csv`).
   its spaces. Headers that would otherwise produce the same slug (e.g. `WS` and `W&S`,
   which both reduce to `ws`) are kept separate automatically — the second one gets a
   suffixed slug (`pa_ws-2`) and is matched by its exact header text.
+- **Attribute header flag tags (optional).** Add bracketed tags to an attribute's
+  column header to control it; they are stripped from the attribute name and may be
+  combined:
+  - `[hidden]` — the attribute is **not shown on the product page** (still created
+    and usable for filtering / variations). Example header: `Material [hidden]`.
+  - `[no-vary]` — on a **variable** product, the attribute is **not used for
+    variations** (kept as a plain display/filter attribute). Example header:
+    `Material [no-vary]`. Has no effect on simple products (they have no variations).
+  - Combine them: `Material [hidden][no-vary]`. With no tags the defaults apply:
+    visible on the page, and (on a variable product) used for variations.
+  - The tags round-trip: **Export** fills values into tagged columns correctly, and
+    re-import preserves the flags.

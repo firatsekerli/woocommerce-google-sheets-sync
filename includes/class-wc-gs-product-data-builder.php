@@ -254,7 +254,16 @@ class WC_GS_Product_Data_Builder {
             $count = $meta_start;
         }
         for ($i = $start + 1; $i < $count; $i++) {
-            $name = isset($headers[$i]) ? trim($headers[$i]) : '';
+            $header = isset($headers[$i]) ? trim((string) $headers[$i]) : '';
+            if ($header === '') {
+                continue;
+            }
+
+            // Optional flag tags in the header (e.g. "Model [hidden]",
+            // "Material [no-vary]") control per-attribute visibility and whether
+            // it drives variations. The attribute name is the header without them.
+            $parsed = self::parse_attribute_header($header);
+            $name = $parsed['name'];
             if ($name === '') {
                 continue;
             }
@@ -273,12 +282,42 @@ class WC_GS_Product_Data_Builder {
             }
 
             $attributes[] = array(
-                'name'   => $name,
-                'values' => $values,
+                'name'      => $name,
+                'values'    => $values,
+                'visible'   => $parsed['visible'],
+                'variation' => $parsed['variation'],
             );
         }
 
         return $attributes;
+    }
+
+    /**
+     * Parse an attribute column header for optional flag tags.
+     *
+     * Bracketed tags, combinable and conventionally at the end of the header:
+     *   [hidden]  → hide the attribute from the product page (visible = false)
+     *   [no-vary] → keep it off the variation set on a variable product
+     * The attribute name is the header with the recognized tags removed.
+     *
+     * Returns array('name' => string, 'visible' => bool, 'variation' => bool|null);
+     * 'variation' is null when the header doesn't force it, so the caller applies
+     * the default (used for variations on a variable parent, not on a simple
+     * product). Shared with the exporter so tagged headers round-trip.
+     */
+    public static function parse_attribute_header($header) {
+        $header = (string) $header;
+
+        $hidden_re  = '/\[\s*hidden\s*\]/i';
+        $novary_re  = '/\[\s*no[-_ ]?vary\s*\]/i';
+
+        $visible   = !preg_match($hidden_re, $header);
+        $variation = preg_match($novary_re, $header) ? false : null;
+
+        $name = preg_replace(array($hidden_re, $novary_re), '', $header);
+        $name = trim(preg_replace('/\s+/', ' ', $name));
+
+        return array('name' => $name, 'visible' => $visible, 'variation' => $variation);
     }
 
     /**
