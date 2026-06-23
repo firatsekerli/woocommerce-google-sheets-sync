@@ -1566,6 +1566,9 @@ class WC_GS_Sync_Handler {
 
 			if (!$force_update && !$had_empty_id && $type_matches && $old_hash !== '' && $old_hash === $new_hash) {
 				error_log('WC_GS_Sync: Row ' . $row_number . ' - no changes, skipping update');
+				// Unchanged, so set_product_attributes won't run — keep the attribute
+				// term order aligned to the sheet anyway (cheap; no product save).
+				$this->ensure_attribute_term_order($product_data['attributes'] ?? array());
 				return array(
 					'action'       => 'skipped',
 					'product_id'   => $found_product_id,
@@ -1699,6 +1702,11 @@ class WC_GS_Sync_Handler {
             $old_hash = $existing_product->get_meta('_wc_gs_data_hash');
             if (!$force_update && !$had_empty_id && $old_hash !== '' && $old_hash === $new_hash
                 && $existing_product->get_type() === 'variable') {
+                // Unchanged, so set_product_attributes won't run — but still keep
+                // the attribute term order in sync with the sheet so the front-end
+                // variation dropdown order can be corrected without forcing a full
+                // update of every product.
+                $this->ensure_attribute_term_order($product_data['attributes'] ?? array());
                 return array(
                     'action'       => 'skipped',
                     'product_id'   => $found_product_id,
@@ -3026,6 +3034,62 @@ class WC_GS_Sync_Handler {
             $product->set_attributes($product_attributes);
             $product->save();
         }
+    }
+
+    /**
+     * Align a global attribute's term order to the sheet without touching the
+     * product. Used on the skip path (an unchanged product never reaches
+     * set_product_attributes, which is where terms are otherwise ordered), so the
+     * front-end variation dropdown order can be corrected without forcing a full
+     * re-update of every product. Resolves only attributes/terms that already
+     * exist; anything missing is left for a real create/update to handle.
+     */
+    private function ensure_attribute_term_order($attributes) {
+        if (empty($attributes) || !is_array($attributes) || !function_exists('wc_set_term_order')) {
+            return;
+        }
+        foreach ($attributes as $attribute) {
+            $name = isset($attribute['name']) ? trim($attribute['name']) : '';
+            $values = isset($attribute['values']) ? (array) $attribute['values'] : array();
+            if ($name === '' || empty($values)) {
+                continue;
+            }
+            $taxonomy = $this->find_existing_attribute_taxonomy($name);
+            if (!$taxonomy) {
+                continue;
+            }
+            $order = 0;
+            foreach ($values as $value) {
+                $value = trim($value);
+                if ($value === '') {
+                    continue;
+                }
+                $term = get_term_by('name', $value, $taxonomy);
+                if ($term && !is_wp_error($term)) {
+                    wc_set_term_order((int) $term->term_id, $order, $taxonomy);
+                    $order++;
+                }
+            }
+        }
+    }
+
+    /**
+     * Find an existing global attribute taxonomy by its label (exact header text)
+     * without creating one. Returns the taxonomy name or false.
+     */
+    private function find_existing_attribute_taxonomy($name) {
+        $name = trim($name);
+        if ($name === '') {
+            return false;
+        }
+        foreach (wc_get_attribute_taxonomies() as $tax) {
+            if (isset($tax->attribute_label) && $tax->attribute_label === $name) {
+                $taxonomy = wc_attribute_taxonomy_name($tax->attribute_name);
+                $this->register_attribute_taxonomy($taxonomy);
+                return $taxonomy;
+            }
+        }
+        return false;
     }
 
     /**
