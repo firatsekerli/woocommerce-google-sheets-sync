@@ -27,16 +27,15 @@ jQuery(document).ready(function($) {
     // Handle "Cancel Sync" clicks
     $('#wc-gs-cancel-sync').on('click', function(e) {
         e.preventDefault();
-        if (!activeSyncId) {
-            return;
-        }
         if (!confirm('Cancel the running sync? Products already imported will stay; the remaining work and sheet write-back will stop.')) {
             return;
         }
 
         var cancelBtn = $(this);
         var button = activeSyncButton;
-        var syncId = activeSyncId;
+        // sync_id may not have arrived yet (still "Initializing…"); send what we
+        // have. The server cancels the queued background batches regardless.
+        var syncId = activeSyncId || '';
         cancelBtn.prop('disabled', true).text('Cancelling...');
 
         $.ajax({
@@ -123,6 +122,12 @@ jQuery(document).ready(function($) {
     function startSync(sheetId, button) {
         // Disable button and show loading
         button.prop('disabled', true).text('Starting Sync...');
+
+        // Make the sync cancellable from the moment it begins — the start request
+        // runs the first batch inline, so "Initializing…" can last a while and the
+        // user needs a way out before live polling (and the sync_id) arrive.
+        activeSyncButton = button;
+        $('#wc-gs-cancel-sync').show();
 
         // Show which sheet is being synced in the progress panel
         var sheetName = button.closest('.wc-gs-connected-sheet-card').find('.wc-gs-sheet-title').text().replace(/\s+/g, ' ').trim();
