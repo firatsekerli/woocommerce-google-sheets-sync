@@ -2282,6 +2282,13 @@ class WC_GS_Sync_Handler {
 		$subset = array();
 		foreach ($keys as $k) {
 			$v = isset($product_data[$k]) ? $product_data[$k] : null;
+			// Images flip representation once imported (a source URL on the first
+			// sync becomes a matched attachment ID on later syncs). Normalize them
+			// to their stable source URL so that flip alone doesn't look like a
+			// change and spuriously re-"update" the product.
+			if ($k === 'images') {
+				$v = $this->normalize_images_for_hash($v);
+			}
 			// Canonicalize so a value missing on a new product (the data is cleaned
 			// of empties when the ID is blank) hashes the same as the same value
 			// present-but-empty on an update. Without this, a product created from
@@ -2290,6 +2297,44 @@ class WC_GS_Sync_Handler {
 		}
 
 		return md5(wp_json_encode($subset));
+	}
+
+	/**
+	 * Normalize the images array for change detection so an image hashes the same
+	 * whether it is represented as a source URL (not yet in the media library) or
+	 * as a matched attachment ID (after it has been imported). Each image reduces
+	 * to its stable source URL plus position and alt text. Without this, the first
+	 * re-sync after a product's images are imported always looks "updated" because
+	 * the image flips from {src: url} to {id: 123}.
+	 */
+	private function normalize_images_for_hash($images) {
+		if (!is_array($images)) {
+			return $images;
+		}
+		$out = array();
+		foreach ($images as $img) {
+			if (!is_array($img)) {
+				continue;
+			}
+			$url = '';
+			if (isset($img['src']) && $img['src'] !== '') {
+				$url = (string) $img['src'];
+			} elseif (!empty($img['id'])) {
+				// Prefer the original source URL stored at import time; fall back to
+				// the local attachment URL (the filename match guarantees it equals
+				// the sheet URL).
+				$src_meta = get_post_meta((int) $img['id'], '_wc_gs_source_url', true);
+				$url = ($src_meta !== '' && $src_meta !== false)
+					? (string) $src_meta
+					: (string) wp_get_attachment_url((int) $img['id']);
+			}
+			$out[] = array(
+				'url'      => $url,
+				'position' => isset($img['position']) ? (int) $img['position'] : 0,
+				'alt'      => isset($img['alt']) ? (string) $img['alt'] : '',
+			);
+		}
+		return $out;
 	}
 
 	/**

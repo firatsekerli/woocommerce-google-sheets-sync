@@ -62,6 +62,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **Products with images no longer spuriously re-"update" on every re-sync.** The
+  change-detection hash includes the images, but an image is represented as a
+  source URL on the first sync and as a matched attachment ID once it has been
+  imported — so the representation flipped on the next sync and the product looked
+  changed even when the sheet was untouched (products *without* images correctly
+  skipped). The hash now normalizes each image to its stable source URL, so the
+  URL→ID flip alone is not treated as a change. *(One-time effect on upgrade: the
+  first sync after updating may show image-bearing products as "updated" as their
+  stored hash is recomputed, then it settles and unchanged rows skip.)*
 - **Write-back to the sheet is no longer slow enough to be killed mid-run.** After
   a large import, write-back split the cell updates into chunks of `Batch Size`
   ranges and slept `rate_limit_delay` (1s) between *every* chunk — hundreds of tiny
