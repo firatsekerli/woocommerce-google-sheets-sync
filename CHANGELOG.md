@@ -74,6 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **A slow/unreachable image no longer kills the whole sync batch.** Image
+  downloads used `download_url()` with no timeout, falling back to WordPress's
+  300-second default — so one hanging external/CDN image could block a batch for
+  300s, which is exactly Action Scheduler's per-action limit, causing the batch to
+  be "marked as failed after 300 seconds" and the sync to stall. The per-image
+  download is now capped (20s, filterable via `wc_gs_image_download_timeout`); a
+  bad image fails fast and is skipped (the rest of the row still imports) instead
+  of taking down the batch.
 - **A row whose SKU matches an existing product is no longer wrongly rejected as a
   duplicate.** `validate_product_data` checked SKU/GTIN uniqueness *before* the
   engine's ID→SKU→Name matching, and only excluded the row's explicit `ID`. So a

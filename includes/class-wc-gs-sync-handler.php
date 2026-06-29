@@ -3468,10 +3468,17 @@ class WC_GS_Sync_Handler {
         require_once(ABSPATH . 'wp-admin/includes/media.php');
         require_once(ABSPATH . 'wp-admin/includes/image.php');
 
-        $temp_file = download_url($image_url);
-        
+        // Cap the per-image download time. download_url() defaults to a 300s
+        // timeout, so a single slow/unreachable image can block a whole batch for
+        // 300 seconds — exactly Action Scheduler's per-action limit, which then
+        // marks the batch "failed after 300 seconds" and stops the sync. A short
+        // timeout makes a bad image fail fast; the caller skips it and the rest of
+        // the row still imports. Filterable for slow hosts / large images.
+        $timeout = max(5, (int) apply_filters('wc_gs_image_download_timeout', 20));
+        $temp_file = download_url($image_url, $timeout);
+
         if (is_wp_error($temp_file)) {
-            error_log('WC_GS_Sync: Failed to download image: ' . $temp_file->get_error_message());
+            error_log('WC_GS_Sync: Failed to download image (timeout ' . $timeout . 's): ' . $temp_file->get_error_message());
             return $temp_file;
         }
         
