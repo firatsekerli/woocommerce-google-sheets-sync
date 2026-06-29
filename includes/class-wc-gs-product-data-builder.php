@@ -691,18 +691,33 @@ class WC_GS_Product_Data_Builder {
             $errors[] = "Weight must be a valid number";
         }
 		
+		// The product this row resolves to. A SKU/GTIN already on THIS product is
+		// not a conflict — it's an update. The engine matches by explicit ID first,
+		// then by SKU; so a blank-ID row whose SKU belongs to an existing product
+		// will UPDATE that product (e.g. when the ID was never written back to the
+		// sheet) rather than create a duplicate. Validation must mirror that, or it
+		// rejects legitimate updates and the row can never get its ID back.
+		$target_product_id = (int) ($product_data['id'] ?? 0);
+		if (!$target_product_id && !empty($product_data['sku'])) {
+			$sku_owner = wc_get_product_id_by_sku($product_data['sku']);
+			if ($sku_owner) {
+				$target_product_id = (int) $sku_owner;
+			}
+		}
+
 		// NEW: Add SKU validation
 		if (!empty($product_data['sku'])) {
 			$sku = $product_data['sku'];
-			
+
 			// Check SKU format
 			if (strlen($sku) < 1) {
 				$errors[] = "SKU cannot be empty";
 			}
-			
-			// Check SKU uniqueness
+
+			// Check SKU uniqueness — only a conflict if the SKU is owned by a
+			// DIFFERENT product than the one this row will update.
 			$existing_product_id = wc_get_product_id_by_sku($sku);
-			if ($existing_product_id && $existing_product_id != ($product_data['id'] ?? null)) {
+			if ($existing_product_id && (int) $existing_product_id !== $target_product_id) {
 				$errors[] = 'SKU "' . $sku . '" already exists in product ID ' . $existing_product_id;
 			}
 		}
@@ -721,16 +736,18 @@ class WC_GS_Product_Data_Builder {
 						$errors[] = 'GTIN "' . $gtin . '" has invalid length (must be 8, 12, 13, or 14 digits)';
 					}
 					
-					// Check GTIN uniqueness
+					// Check GTIN uniqueness — exclude the product this row resolves
+					// to (by ID or SKU), so a GTIN already on THIS product isn't a
+					// false conflict on a blank-ID update.
 					global $wpdb;
 					$existing_product_id = $wpdb->get_var($wpdb->prepare(
-						"SELECT post_id FROM {$wpdb->postmeta} 
-						 WHERE meta_key = '_global_unique_id' 
-						 AND meta_value = %s 
+						"SELECT post_id FROM {$wpdb->postmeta}
+						 WHERE meta_key = '_global_unique_id'
+						 AND meta_value = %s
 						 AND post_id != %d
 						 LIMIT 1",
 						$gtin,
-						$product_data['id'] ?? 0
+						$target_product_id
 					));
 					
 					if ($existing_product_id) {

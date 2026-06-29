@@ -74,6 +74,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **A row whose SKU matches an existing product is no longer wrongly rejected as a
+  duplicate.** `validate_product_data` checked SKU/GTIN uniqueness *before* the
+  engine's ID→SKU→Name matching, and only excluded the row's explicit `ID`. So a
+  row with a **blank ID** whose SKU belonged to an existing product (e.g. the
+  product's ID was never written back to the sheet) failed with *"SKU already
+  exists in product ID N"* — even though the engine would have matched that product
+  by SKU and updated it. Because it errored before updating, the ID was never
+  written back, so the row failed on every re-sync. Validation now resolves the
+  product the row targets (by ID, then SKU) and only flags a conflict when the
+  SKU/GTIN is owned by a *different* product. (Side effect: a row whose SKU matches
+  an existing product now updates it; genuine in-sheet duplicate SKUs collapse to
+  updating one product rather than erroring.)
 - **Front-end variation dropdown now lists options in sheet order.** Variation
   display order is set by the attribute's *term* order, which the plugin never set —
   so the dropdown fell back to WooCommerce's default (creation/term order) and
