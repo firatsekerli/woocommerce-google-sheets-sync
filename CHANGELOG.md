@@ -74,6 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **Front-end attribute dropdown order now stays correct (self-heals).** A
+  per-product "already ordered" guard meant the global attribute term order was set
+  once and never re-checked — so if another product (or the order terms were first
+  created in) left the global order stale, the dropdown kept showing the wrong order
+  (e.g. `84"`, `72"`, `96"` instead of `72"`, `84"`, `96"`). The guard is removed:
+  term order is now re-verified on every parent sync and corrected when it has
+  drifted (the underlying meta write is skipped when already correct, so it stays
+  cheap).
 - **Background sync is now resilient to hosts that kill long requests (no server
   cron needed).** Previously a background pass looped several batches (~40s) per
   Action Scheduler request; on hosts that cap request time (nginx/PHP-FPM), the
@@ -121,12 +129,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   didn't match the sheet, even after variations themselves were ordered. The
   attribute's terms are now ordered (via `wc_set_term_order`) to match the order
   their values appear in the row, so the dropdown follows the sheet. This is also
-  applied to **unchanged/skipped** rows, so the order corrects itself on a normal
-  re-sync without having to force-update every product — but guarded by a per-
-  product signature so it only does work when the desired order actually changes
-  (a steady-state re-sync is a single meta read). (Term order is global per
-  attribute taxonomy — if two products list the same attribute's values in
-  different orders, the most recently synced product wins.)
+  applied to **unchanged/skipped** rows and re-verified on every sync, so the order
+  self-heals — `wc_set_term_order()` no-ops the DB write when the order is already
+  correct, so it's cheap when nothing changed and corrects drift when it isn't.
+  (Term order is global per attribute taxonomy — if two products list the same
+  attribute's values in different orders, the most recently synced product wins.)
 - **Variations now display in sheet order.** WooCommerce sorts the admin Variations
   list by `menu_order` then newest-ID-first, and the plugin never set a
   `menu_order`, so variations appeared in the reverse of their sheet rows. Each
