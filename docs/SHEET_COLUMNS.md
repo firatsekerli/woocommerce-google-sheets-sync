@@ -59,7 +59,7 @@ Google Sheet.
 | **Shipping Class** | Name of an existing or new shipping class (e.g. `Heavy`). |
 | **Upsells** | Product IDs or SKUs, separated by comma / semicolon / pipe. |
 | **Cross-sells** | Product IDs or SKUs, separated by comma / semicolon / pipe. |
-| **Category Path** | Use `>` for hierarchy (e.g. `Electronics > Phones > iPhone`). |
+| **Category Path** | Use `>` for hierarchy (e.g. `Electronics > Phones > iPhone`) — the product is added to the leaf and all its parents. Assign to **multiple** categories by separating paths with `\|` (e.g. `Brush Cutters & Land Clearing \| Trenchers > Mini`). Separator filterable via `wc_gs_category_path_separator`. |
 | **Tags** | Comma, semicolon, or pipe separated (e.g. `coffee, organic, fair-trade`). |
 | **Sync Status** | Read-only — filled by the system (`synced`, `error`, or `deleted`). A row showing `deleted` is skipped on future syncs (so the product isn't recreated); clear this cell to import the row again. |
 | **Sync Error** | Read-only — filled by the system. |

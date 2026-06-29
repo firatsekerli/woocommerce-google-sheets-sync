@@ -56,18 +56,29 @@ class WC_GS_Product_Data_Builder {
         };
 
         // === CATEGORIES HANDLING ===
+        // One or more category paths. Multiple paths are separated by "|"
+        // (filterable via wc_gs_category_path_separator); within each path, ">"
+        // denotes hierarchy (Parent > Child > Grandchild). The product is assigned
+        // to every level of every path (leaf + ancestors).
         $categories = array();
         $category_path = $get("Category Path");
-        
+
         if ($category_path) {
-            $category_names = array_filter(array_map('trim', explode('>', $category_path)));
-            $parent_id = 0;
-            
-            foreach ($category_names as $category_name) {
-                $category_id = $this->get_or_create_category($category_name, $parent_id);
-                if ($category_id) {
-                    $categories[] = array('id' => $category_id);
-                    $parent_id = $category_id;
+            $path_separator = apply_filters('wc_gs_category_path_separator', '|');
+            $paths = ($path_separator !== '' && strpos($category_path, $path_separator) !== false)
+                ? explode($path_separator, $category_path)
+                : array($category_path);
+
+            foreach ($paths as $single_path) {
+                $category_names = array_filter(array_map('trim', explode('>', $single_path)));
+                $parent_id = 0;
+
+                foreach ($category_names as $category_name) {
+                    $category_id = $this->get_or_create_category($category_name, $parent_id);
+                    if ($category_id) {
+                        $categories[] = array('id' => $category_id);
+                        $parent_id = $category_id;
+                    }
                 }
             }
         }

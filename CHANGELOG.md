@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (combinable, e.g. `Material [hidden][no-vary]`). The tags are stripped from the
   attribute name; with no tags the previous defaults apply (visible, and used for
   variations on a variable parent). The tags round-trip through Export.
+- **Multiple categories per product.** `Category Path` now accepts more than one
+  branch, separated by `|` (e.g. `Brush Cutters & Land Clearing | Trenchers > Mini`);
+  each branch still uses `>` for hierarchy and the product is assigned to every
+  level of every branch. The separator is filterable via
+  `wc_gs_category_path_separator`. Export emits one path per leaf category, joined
+  by the separator, so multi-category products round-trip.
 - **"Cancel Sync" button** in the Sync Progress panel. It cancels any queued
   background batches and removes the job/state so a batch mid-flight aborts and
   finalize never runs, then marks the run "cancelled" and stops the live updates.

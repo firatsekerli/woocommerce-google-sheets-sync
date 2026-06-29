@@ -332,31 +332,56 @@ class WC_GS_Product_Exporter {
     }
 
     /**
-     * Build a hierarchical "Parent > Child" path for the product's first category.
+     * Build the product's category paths. Each distinct branch is a hierarchical
+     * "Parent > Child" path; multiple branches are joined by the path separator
+     * ("|" by default) so they round-trip with the importer.
      */
     private function get_category_path($product) {
-        $category_ids = $product->get_category_ids();
+        $category_ids = array_map('intval', (array) $product->get_category_ids());
         if (empty($category_ids)) {
             return '';
         }
 
-        $term_id = $category_ids[0];
-        $names = array();
+        // Leaves = assigned categories that are not an ancestor of another assigned
+        // category, so we emit one full path per branch instead of a redundant
+        // sub-path for every level (the importer assigns leaf + all ancestors).
+        $is_ancestor = array();
+        foreach ($category_ids as $cid) {
+            foreach (get_ancestors($cid, 'product_cat') as $anc) {
+                $is_ancestor[(int) $anc] = true;
+            }
+        }
+        $leaves = array();
+        foreach ($category_ids as $cid) {
+            if (empty($is_ancestor[$cid])) {
+                $leaves[] = $cid;
+            }
+        }
+        if (empty($leaves)) {
+            $leaves = $category_ids; // fallback (shouldn't happen)
+        }
 
-        $ancestors = array_reverse(get_ancestors($term_id, 'product_cat'));
-        foreach ($ancestors as $ancestor_id) {
-            $term = get_term($ancestor_id, 'product_cat');
+        $paths = array();
+        foreach ($leaves as $leaf_id) {
+            $names = array();
+            foreach (array_reverse(get_ancestors($leaf_id, 'product_cat')) as $ancestor_id) {
+                $term = get_term($ancestor_id, 'product_cat');
+                if ($term && !is_wp_error($term)) {
+                    $names[] = $term->name;
+                }
+            }
+            $term = get_term($leaf_id, 'product_cat');
             if ($term && !is_wp_error($term)) {
                 $names[] = $term->name;
             }
+            if (!empty($names)) {
+                $paths[] = implode(' > ', $names);
+            }
         }
 
-        $term = get_term($term_id, 'product_cat');
-        if ($term && !is_wp_error($term)) {
-            $names[] = $term->name;
-        }
-
-        return implode(' > ', $names);
+        $sep = apply_filters('wc_gs_category_path_separator', '|');
+        $glue = ($sep === '|') ? ' | ' : $sep; // spaced for readability when using |
+        return implode($glue, $paths);
     }
 
     /**
