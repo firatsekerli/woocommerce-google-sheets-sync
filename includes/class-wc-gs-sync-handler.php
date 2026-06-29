@@ -417,7 +417,62 @@ class WC_GS_Sync_Handler {
             wp_send_json_error('Sync progress not found');
         }
 
+        // Self-heal: if the background chain broke (e.g. the host killed an async
+        // request before it could queue the next batch), re-queue it from the last
+        // saved offset. Runs off the dashboard's normal progress polling, so a
+        // stalled sync recovers on its own with no server cron required.
+        $this->maybe_resume_stalled_sync($sync_id, $progress);
+
         wp_send_json_success($progress);
+    }
+
+    /**
+     * Re-queue a sync whose background chain has stalled. A host that kills the
+     * Action Scheduler async request mid-batch can leave a job with no pending or
+     * in-progress batch action and the next pass never queued. When the dashboard
+     * polls progress we detect that and enqueue a fresh batch from the saved
+     * offset. Heavily guarded so it never double-runs an active batch.
+     */
+    private function maybe_resume_stalled_sync($sync_id, $progress) {
+        if (!is_array($progress)) {
+            return;
+        }
+        $status = isset($progress['status']) ? $progress['status'] : '';
+        if (!in_array($status, array('processing', 'starting'), true)) {
+            return; // only active syncs
+        }
+        if (!function_exists('as_enqueue_async_action') || !function_exists('as_get_scheduled_actions')) {
+            return; // no Action Scheduler — inline path handles it
+        }
+
+        // Throttle the (DB-touching) check so 1s polling doesn't hammer it.
+        $chk_key = 'wc_gs_sync_resume_chk_' . $sync_id;
+        if (get_transient($chk_key)) {
+            return;
+        }
+        set_transient($chk_key, 1, 15); // re-check at most every 15s
+
+        // If the job/state are gone, the sync finished or was cancelled.
+        $job = get_option('wc_gs_sync_job_' . $sync_id);
+        $state = get_option('wc_gs_sync_state_' . $sync_id);
+        if (!is_array($job) || !is_array($state)) {
+            return;
+        }
+
+        // Don't touch it if a batch is already queued or running.
+        $active = as_get_scheduled_actions(array(
+            'hook'     => 'wc_gs_process_sync_batch',
+            'group'    => 'wc-gs-sync',
+            'status'   => array('pending', 'in-progress'),
+            'per_page' => 1,
+        ), 'ids');
+        if (!empty($active)) {
+            return;
+        }
+
+        $offset = isset($state['next_offset']) ? (int) $state['next_offset'] : 0;
+        as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $offset, 1), 'wc-gs-sync');
+        error_log('WC_GS_Sync: Resumed stalled sync ' . $sync_id . ' from offset ' . $offset);
     }
 
     /**
@@ -588,28 +643,43 @@ class WC_GS_Sync_Handler {
         $offset = (int) $offset;
         $has_as = function_exists('as_enqueue_async_action');
 
-        // Process as many batches as fit within a time budget before deferring the
-        // rest to Action Scheduler. The inline run (the browser's sync request) uses
-        // a shorter budget so it finishes before the reverse-proxy timeout; a
-        // background (Action Scheduler) run can do more per pass, but must stay
-        // under AS's ~30s per-run limit to avoid being retried as a stalled action.
-        $budget = $is_background ? 25 : 15;
-        $deadline = microtime(true) + $budget;
+        // Background pass (Action Scheduler's async HTTP runner): do exactly ONE
+        // time-budgeted batch, queue the next pass, and return. Keeping each request
+        // short is what makes background syncs survive hosts that kill long requests
+        // (nginx/PHP-FPM request timeout → "recv() failed / connection reset"): a
+        // long request would be killed mid-batch and never queue the next pass, so
+        // the chain would stall. One short batch per request finishes well within
+        // host limits and the queue chains itself — no server cron required.
+        // (run_sync_batch caps its own wall-clock via wc_gs_batch_time_limit.)
+        if ($is_background && $has_as) {
+            $next = $this->run_sync_batch($sync_id, $offset);
+            if ($next === null) {
+                return; // finished (or aborted) — run_sync_batch finalized/cleaned up
+            }
+            as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, (int) $next, 1), 'wc-gs-sync');
+            return;
+        }
 
+        // Inline (the browser's Sync Now request) or no Action Scheduler available:
+        // process within a short budget for immediate feedback, then hand the rest
+        // to the background queue (or, without AS, keep going inline until done).
+        $deadline = microtime(true) + 15;
         while (true) {
             $next = $this->run_sync_batch($sync_id, $offset);
 
             if ($next === null) {
-                return; // Finished (or aborted) — run_sync_batch finalized/cleaned up
+                return; // Finished (or aborted)
             }
 
             $offset = (int) $next;
 
-            // Out of budget: hand the remainder to the background queue (flagged as
-            // a background run so it uses the larger budget).
-            if ($has_as && microtime(true) >= $deadline) {
-                as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $offset, 1), 'wc-gs-sync');
-                return;
+            if (microtime(true) >= $deadline) {
+                if ($has_as) {
+                    as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $offset, 1), 'wc-gs-sync');
+                    return;
+                }
+                // No Action Scheduler at all: nothing else will continue this, so
+                // keep processing inline until the job is done.
             }
         }
     }
@@ -658,7 +728,7 @@ class WC_GS_Sync_Handler {
         // "failed after 300 seconds". We always process at least one row, then stop
         // once the budget is hit and hand the remaining rows to the next run. This
         // makes wall-clock the real limit and Batch Size just an upper bound.
-        $batch_deadline = microtime(true) + max(5, (int) apply_filters('wc_gs_batch_time_limit', 20));
+        $batch_deadline = microtime(true) + max(5, (int) apply_filters('wc_gs_batch_time_limit', 15));
         $processed_in_slice = 0;
 
         try {
@@ -703,11 +773,14 @@ class WC_GS_Sync_Handler {
         $state['process_ms'] = (isset($state['process_ms']) ? (int) $state['process_ms'] : 0) + $batch_ms;
         error_log('WC_GS_Timing: batch at offset ' . (int) $offset . ' processed ' . $processed_in_slice . ' row(s) in ' . $batch_ms . 'ms');
 
-        update_option('wc_gs_sync_state_' . $sync_id, $state, false);
-
         // Advance by the number actually processed (may be < batch_size if the
         // per-batch time budget cut the slice short).
         $processed = min($offset + max(1, $processed_in_slice), $total);
+
+        // Persist the resume point so a stalled job can be continued from here
+        // (used by the dashboard self-heal) without re-reading the action's offset.
+        $state['next_offset'] = $processed;
+        update_option('wc_gs_sync_state_' . $sync_id, $state, false);
         $percent = $total > 0 ? round(($processed / $total) * 100) : 100;
 
         $this->update_sync_progress($sync_id, array(

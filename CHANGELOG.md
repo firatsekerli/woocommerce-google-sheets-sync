@@ -74,6 +74,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **Background sync is now resilient to hosts that kill long requests (no server
+  cron needed).** Previously a background pass looped several batches (~40s) per
+  Action Scheduler request; on hosts that cap request time (nginx/PHP-FPM), the
+  request was killed mid-pass (`recv() failed (104: Connection reset by peer)`)
+  before it could queue the next pass, so the sync stalled after a handful of rows.
+  Now a background pass does **one short, time-budgeted batch, queues the next, and
+  returns** — each request finishes well within host limits and the queue chains
+  itself. As a safety net, the dashboard's progress polling **self-heals a stalled
+  job**: if the chain breaks (an async request died before queuing the next batch),
+  it re-queues from the last saved offset — so the sync recovers on its own with no
+  server cron. The resume point (`next_offset`) is persisted after every batch.
 - **A batch now yields on a wall-clock budget so image-heavy rows can't overrun
   Action Scheduler.** A batch processed up to `Batch Size` rows atomically, only
   checking the time budget *between* batches. With rows carrying many images
