@@ -1467,50 +1467,17 @@ class WC_GS_Sync_Handler {
 
 			error_log('WC_GS_Sync: Row ' . $row_number . ' - Product modified: ' . date('Y-m-d H:i:s', $product_modified) . ', Last sync: ' . date('Y-m-d H:i:s', $sheet_last_synced) . ', Recently modified: ' . ($product_recently_modified ? 'YES' : 'NO'));
 
-			// SKU Logic - SIMPLIFIED
+			// SKU: the sheet is the source of truth, so the sheet value always wins
+			// — we no longer overwrite the sheet with a SKU changed in WooCommerce.
+			// (The auto-generated-SKU case is just the sheet/generated value too.)
 			if ($had_empty_sku && !empty($product_data['sku'])) {
-				// Auto-generation case - always use sheet value
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU auto-generation: will use sheet value "' . $product_data['sku'] . '"');
-			} elseif ($current_sku_before_update !== $original_sku) {
-				// Values differ - decide who wins
-				if ($product_recently_modified) {
-					// Product was recently modified in WooCommerce - preserve WooCommerce value
-					$product_data['sku'] = $current_sku_before_update;
-					$will_write_sku_back = true;
-					error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU: Product recently modified, preserving WooCommerce value "' . $current_sku_before_update . '"');
-				} else {
-					// Product NOT recently modified - use sheet value
-					error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU: Product not recently modified, using sheet value "' . $original_sku . '"');
-					// Keep product_data['sku'] as-is (sheet value)
-				}
-			} else {
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU: Values match, no action needed');
+				error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU auto-generated: using "' . $product_data['sku'] . '"');
 			}
+			// product_data['sku'] keeps the sheet value; no Woo->sheet SKU write-back.
 
-			// GTIN Logic - SIMPLIFIED (same pattern)
-			if ($current_gtin_before_update !== $original_gtin) {
-				// Values differ - decide who wins
-				if ($product_recently_modified) {
-					// Product was recently modified in WooCommerce - preserve WooCommerce value
-					if (!empty($product_data['meta_data'])) {
-						foreach ($product_data['meta_data'] as &$meta) {
-							if ($meta['key'] === '_global_unique_id') {
-								$meta['value'] = $current_gtin_before_update;
-								$will_write_gtin_back = true;
-								break;
-							}
-						}
-					}
-					error_log('WC_GS_Sync: Row ' . $row_number . ' - GTIN: Product recently modified, preserving WooCommerce value "' . $current_gtin_before_update . '"');
-				} else {
-					// Product NOT recently modified - use sheet value
-					error_log('WC_GS_Sync: Row ' . $row_number . ' - GTIN: Product not recently modified, using sheet value "' . $original_gtin . '"');
-					// Keep product_data['meta_data'] as-is (sheet value)
-				}
-			} else {
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - GTIN: Values match, no action needed');
-			}
-			
+			// GTIN: sheet is the source of truth — the sheet value always wins, no
+			// Woo->sheet GTIN write-back. product_data['meta_data'] keeps the sheet value.
+
 			// NEW: Quantity Logic - SIMPLIFIED (same pattern)
 			// Convert to string for comparison (handle null/empty cases)
 			$current_quantity_str = ($current_quantity_before_update !== null) ? strval($current_quantity_before_update) : '';
@@ -1953,25 +1920,10 @@ class WC_GS_Sync_Handler {
             $sheet_last_synced = (int) get_option('wc_gs_sync_last_sync_time', 0);
             $recently_modified = ($variation_modified > $sheet_last_synced) && !$force_update;
 
-            // SKU: preserve WooCommerce value when it was changed there (but never
-            // for the auto-generated-SKU case, where the sheet/generated value wins).
-            if (!($had_empty_sku && !empty($product_data['sku']))
-                && $current_sku_before_update !== $original_sku && $recently_modified) {
-                $product_data['sku'] = $current_sku_before_update;
-                $will_write_sku_back = true;
-            }
-
-            // GTIN
-            if ($current_gtin_before_update !== $original_gtin && $recently_modified && !empty($product_data['meta_data'])) {
-                foreach ($product_data['meta_data'] as &$meta_item) {
-                    if ($meta_item['key'] === '_global_unique_id') {
-                        $meta_item['value'] = $current_gtin_before_update;
-                        $will_write_gtin_back = true;
-                        break;
-                    }
-                }
-                unset($meta_item);
-            }
+            // SKU and GTIN: the sheet is the source of truth, so the sheet value
+            // always wins — we no longer overwrite the sheet with a value changed
+            // in WooCommerce. (Quantity stays two-way below, since stock genuinely
+            // changes in WooCommerce as orders come in.)
 
             // Quantity
             $current_qty_str = ($current_quantity_before_update !== null) ? strval($current_quantity_before_update) : '';

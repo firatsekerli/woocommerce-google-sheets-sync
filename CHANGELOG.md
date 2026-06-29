@@ -132,6 +132,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variations, which have no Trash, are still removed).
 
 ### Changed
+- **SKU and GTIN are now strictly sheet-driven (the sheet always wins).** Previously
+  SKU, GTIN and Quantity were all two-way: a value changed directly in WooCommerce
+  after the last sync would overwrite the sheet. That made sense for stock but was
+  surprising for SKU/GTIN, where the sheet is the source of truth. Now a SKU or GTIN
+  edited in WooCommerce is overwritten by the sheet on the next sync and **not**
+  written back. **Quantity remains two-way** (stock genuinely changes in WooCommerce
+  as orders come in). Auto-generated SKUs are still written back (that's how a blank
+  cell gets its value), and IDs / Sync Status / Last Synced still write back as before.
 - **Google connection now uses the non-sensitive `drive.file` scope and the
   Google Picker.** Instead of browsing your whole Drive (which needed the
   restricted `drive.readonly` scope and triggered the "Google hasn't verified
