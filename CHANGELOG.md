@@ -74,6 +74,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **A batch now yields on a wall-clock budget so image-heavy rows can't overrun
+  Action Scheduler.** A batch processed up to `Batch Size` rows atomically, only
+  checking the time budget *between* batches. With rows carrying many images
+  (featured + up to 20 gallery), a single batch could run for minutes — long
+  enough that the server reset the Action Scheduler async-runner connection
+  (`recv() failed (104: Connection reset by peer)`) and the batch was "marked as
+  failed after 300 seconds," stalling the sync. A batch now stops after a
+  per-batch time budget (20s, filterable via `wc_gs_batch_time_limit`) — always
+  doing at least one row — and hands the remaining rows to the next run, so no
+  single batch can exceed the server limit regardless of Batch Size or image count.
 - **A slow/unreachable image no longer kills the whole sync batch.** Image
   downloads used `download_url()` with no timeout, falling back to WordPress's
   300-second default — so one hanging external/CDN image could block a batch for

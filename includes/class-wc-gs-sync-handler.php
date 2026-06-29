@@ -652,6 +652,15 @@ class WC_GS_Sync_Handler {
 
         $t_batch = microtime(true);
 
+        // Cap wall-clock per batch so image-heavy rows (featured + up to 20 gallery
+        // images each) can't run a single batch past the server / Action Scheduler
+        // limit — which would reset the async-runner connection and mark the batch
+        // "failed after 300 seconds". We always process at least one row, then stop
+        // once the budget is hit and hand the remaining rows to the next run. This
+        // makes wall-clock the real limit and Batch Size just an upper bound.
+        $batch_deadline = microtime(true) + max(5, (int) apply_filters('wc_gs_batch_time_limit', 20));
+        $processed_in_slice = 0;
+
         try {
             $slice = array_slice($rows, $offset, $batch_size);
             foreach ($slice as $i => $item) {
@@ -670,6 +679,13 @@ class WC_GS_Sync_Handler {
                     $parent_sku = '';
                 }
                 $this->process_row_into_state($headers, $row, $google_sheet_row, $state, $kind, $parent_sku);
+                $processed_in_slice++;
+
+                // Yield after at least one row once the time budget is spent, so the
+                // remaining rows continue on the next batch instead of overrunning.
+                if (microtime(true) >= $batch_deadline) {
+                    break;
+                }
             }
         } catch (Exception $e) {
             error_log('WC_GS_Sync: Fatal batch error for ' . $sync_id . ': ' . $e->getMessage());
@@ -685,11 +701,13 @@ class WC_GS_Sync_Handler {
 
         $batch_ms = (int) round((microtime(true) - $t_batch) * 1000);
         $state['process_ms'] = (isset($state['process_ms']) ? (int) $state['process_ms'] : 0) + $batch_ms;
-        error_log('WC_GS_Timing: batch at offset ' . (int) $offset . ' processed ' . count($slice) . ' row(s) in ' . $batch_ms . 'ms');
+        error_log('WC_GS_Timing: batch at offset ' . (int) $offset . ' processed ' . $processed_in_slice . ' row(s) in ' . $batch_ms . 'ms');
 
         update_option('wc_gs_sync_state_' . $sync_id, $state, false);
 
-        $processed = min($offset + $batch_size, $total);
+        // Advance by the number actually processed (may be < batch_size if the
+        // per-batch time budget cut the slice short).
+        $processed = min($offset + max(1, $processed_in_slice), $total);
         $percent = $total > 0 ? round(($processed / $total) * 100) : 100;
 
         $this->update_sync_progress($sync_id, array(
