@@ -132,6 +132,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variations, which have no Trash, are still removed).
 
 ### Changed
+- **Blank variation SKUs are auto-generated as `<parent SKU>-NN`.** Previously a
+  blank variation SKU got a generic `auto-<timestamp>` value, which was unreadable
+  and could collide (same-second variations generating the same value). Now a
+  **new** variation with a blank SKU gets `<parent SKU>-01`, `-02`, … using the
+  first unused number (so it's globally unique and gap-filling), and the value is
+  written back to the sheet. Existing variations keep their current SKU (they are
+  matched by ID/SKU/attributes first — only genuinely new ones are generated).
+  Because the generated SKU is pinned in the sheet, later syncs match the variation
+  by **SKU** rather than by attribute combination — so changing a variation's
+  attribute value no longer risks a delete-and-recreate. Explicitly entered
+  variation SKUs are untouched.
 - **SKU and GTIN are now strictly sheet-driven (the sheet always wins).** Previously
   SKU, GTIN and Quantity were all two-way: a value changed directly in WooCommerce
   after the last sync would overwrite the sheet. That made sense for stock but was

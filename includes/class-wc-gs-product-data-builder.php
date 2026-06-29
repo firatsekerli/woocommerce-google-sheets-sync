@@ -95,7 +95,12 @@ class WC_GS_Product_Data_Builder {
         $product_data = array(
             'id' => $get("ID"),
             'images' => $images,
-            'sku' => $this->generate_sku_if_missing($get("SKU"), $get("Name")),
+            // Variation rows are NOT given the generic timestamp SKU here — a blank
+            // variation SKU is generated as "<parent SKU>-NN" in the sync handler
+            // (only for genuinely new variations), so leave it raw for now.
+            'sku' => (self::normalize_type($get("Type")) === 'variation')
+                ? $get("SKU")
+                : $this->generate_sku_if_missing($get("SKU"), $get("Name")),
             'meta_data' => $this->build_meta_data($row, $headers, $is_empty),
             'name' => $get("Name"),
             'slug' => $get("Slug"),

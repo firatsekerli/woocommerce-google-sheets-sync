@@ -1881,6 +1881,26 @@ class WC_GS_Sync_Handler {
         $sku_index = array_search('SKU', $headers);
         $had_empty_sku = !($sku_index !== false && isset($row[$sku_index]) && trim((string) $row[$sku_index]) !== '');
 
+        // New variation with a blank SKU: generate "<parent SKU>-NN" (first unused
+        // number) rather than leaving it blank, so future syncs match it by SKU
+        // instead of by attribute combination. Only for genuinely NEW variations —
+        // an existing one (matched by ID/SKU/attributes above) keeps its own SKU.
+        // The value is written back to the sheet (via $had_empty_sku below), so it
+        // is pinned from then on.
+        if (!$variation && $had_empty_sku && empty($product_data['sku'])) {
+            $parent_product = wc_get_product($parent_id);
+            $base = $parent_product ? trim((string) $parent_product->get_sku()) : trim((string) $parent_sku);
+            if ($base !== '') {
+                $n = 1;
+                do {
+                    $candidate = $base . '-' . str_pad((string) $n, 2, '0', STR_PAD_LEFT);
+                    $n++;
+                } while (wc_get_product_id_by_sku($candidate));
+                $product_data['sku'] = $candidate;
+                error_log('WC_GS_Sync: Row ' . $row_number . ' - generated variation SKU "' . $candidate . '" from parent "' . $base . '"');
+            }
+        }
+
         // Bidirectional write-back for SKU / GTIN / Quantity, mirroring simple
         // products: if the variation was edited in WooCommerce after the last sync
         // (e.g. stock sold), WooCommerce wins for these three and the value is
