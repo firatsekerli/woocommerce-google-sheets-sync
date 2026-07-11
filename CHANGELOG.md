@@ -74,6 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write-back stop.
 
 ### Fixed
+- **Sheets with more than 999 products are no longer truncated.** The import read a
+  fixed `A1:ZZ1000` range, capping the sync at 999 data rows (row 1 is the header),
+  so a larger catalog silently imported only the first 999 and dropped the rest. It
+  now reads an open-ended range (`A:ZZ`, column span filterable via
+  `wc_gs_sheet_read_columns`) so every row is imported regardless of count.
 - **Front-end attribute dropdown order now stays correct (self-heals).** A
   per-product "already ordered" guard meant the global attribute term order was set
   once and never re-checked — so if another product (or the order terms were first

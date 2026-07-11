@@ -1373,8 +1373,14 @@ class WC_GS_Sync_Handler {
             return new WP_Error('auth_error', 'Not authenticated with Google');
         }
         
-        // Get data from specified range (A1:ZZ1000 to get plenty of data)
-        $range = $sheet_config['sheet_tab'] . '!A1:ZZ1000';
+        // Read the whole tab with an OPEN-ENDED row range so large catalogs aren't
+        // silently truncated. The old fixed "A1:ZZ1000" capped the import at 999
+        // data rows (row 1 = header), so sheets with more products lost the rest.
+        // The Sheets API returns only rows that actually contain data, so an
+        // open-ended range doesn't pull empty rows. Column span filterable for
+        // unusually wide sheets.
+        $read_columns = (string) apply_filters('wc_gs_sheet_read_columns', 'ZZ');
+        $range = $sheet_config['sheet_tab'] . '!A:' . $read_columns;
 
         // Retry transient API failures using the configured settings.
         $max_retries = max(1, (int) $this->get_setting('max_retries', 3));
