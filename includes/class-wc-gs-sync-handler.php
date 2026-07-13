@@ -183,9 +183,15 @@ class WC_GS_Sync_Handler {
 
         $headers = (!empty($existing) && isset($existing[0]) && is_array($existing[0])) ? $existing[0] : array();
 
-        // If the sheet has no header row yet, write a default template
+        // If the sheet has no header row yet, write a default template: the fixed
+        // columns plus the "Attributes" marker + a column per global attribute in
+        // the store + the "Meta" marker, so a blank-sheet export is a complete,
+        // round-trippable template (variable-product attribute values export too).
         if (empty($headers)) {
-            $headers = $this->get_default_export_headers();
+            $headers = array_merge(
+                $this->get_default_export_headers(),
+                $this->get_default_attribute_meta_headers()
+            );
             $write_headers = $google_api->batch_update_sheet($spreadsheet_id, array(
                 array('range' => $tab . '!A1', 'values' => array($headers)),
             ));
@@ -249,19 +255,58 @@ class WC_GS_Sync_Handler {
      * Default header row written when exporting to a sheet that has none.
      */
     private function get_default_export_headers() {
-        return array(
+        $headers = array(
             'ID', 'SKU', 'GTIN, UPC, EAN, or ISBN', 'Stock Management', 'Quantity',
             'Stock Status', 'Backorder', 'Low Stock Threshold', 'Sold Individually',
-            'Name', 'Description', 'Short Description', 'Type', 'Parent', 'Virtual', 'Downloadable',
-            'Download Files', 'Download Limit', 'Download Expiry', 'Status', 'Visibility',
-            'Catalog Visibility', 'Password', 'Featured', 'Regular Price', 'Sale Price',
-            'Sale Start Date', 'Sale End Date', 'Tax Status', 'Tax Class', 'Purchase Note',
-            'Position', 'Allow Reviews', 'Weight', 'Dimension (L)', 'Dimension (W)',
+            'Name', 'Slug', 'Description', 'Short Description', 'Type', 'Parent',
+            'Virtual', 'Downloadable', 'Download Files', 'Download Limit', 'Download Expiry',
+            'Status', 'Visibility', 'Password', 'Catalog Visibility', 'Featured',
+            'Regular Price', 'Sale Price', 'Sale Start Date', 'Sale End Date',
+            'Tax Status', 'Tax Class', 'Weight', 'Dimension (L)', 'Dimension (W)',
             'Dimension (H)', 'Shipping Class', 'Upsells', 'Cross-sells', 'Category Path',
-            'Tags', 'Image', 'Gallery Image 01', 'Gallery Image 02', 'Gallery Image 03',
-            'Gallery Image 04', 'Sync Status', 'Sync Error', 'Last Synced', 'Force Update',
-            'Delete',
+            'Tags', 'Sync Status', 'Sync Error', 'Last Synced', 'Force Update', 'Delete',
+            'Image', 'Image Alt Text',
         );
+
+        // Gallery images with an alt-text column each, matching the import range
+        // (filterable via wc_gs_gallery_image_count, default 20).
+        $gallery_count = (int) apply_filters('wc_gs_gallery_image_count', 20);
+        for ($n = 1; $n <= $gallery_count; $n++) {
+            $label = sprintf('Gallery Image %02d', $n);
+            $headers[] = $label;
+            $headers[] = $label . ' Alt Text';
+        }
+
+        $headers[] = 'Purchase Note';
+        $headers[] = 'Position';
+        $headers[] = 'Allow Reviews';
+
+        return $headers;
+    }
+
+    /**
+     * Dynamic tail for a default export template: the "Attributes" marker followed
+     * by a column for every global product attribute in the store, then the "Meta"
+     * marker. Appended only when writing default headers to a fresh sheet, so a
+     * blank-sheet export produces a complete template that round-trips variable
+     * products (their attribute values land in these columns).
+     */
+    private function get_default_attribute_meta_headers() {
+        $cols = array('Attributes');
+
+        if (function_exists('wc_get_attribute_taxonomies')) {
+            foreach (wc_get_attribute_taxonomies() as $tax) {
+                $label = (isset($tax->attribute_label) && trim((string) $tax->attribute_label) !== '')
+                    ? trim((string) $tax->attribute_label)
+                    : (isset($tax->attribute_name) ? trim((string) $tax->attribute_name) : '');
+                if ($label !== '') {
+                    $cols[] = $label;
+                }
+            }
+        }
+
+        $cols[] = 'Meta';
+        return $cols;
     }
     
     /**

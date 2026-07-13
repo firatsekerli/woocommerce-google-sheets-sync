@@ -191,6 +191,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variations, which have no Trash, are still removed).
 
 ### Changed
+- **Exporting into a blank sheet now writes a complete, round-trippable template.**
+  The auto-generated header row was a basic subset (no `Slug`, no image alt-text,
+  only 4 gallery columns, and — critically — no `Attributes`/`Meta` markers, so
+  variable-product attribute values weren't exported). The default template is now
+  the full fixed column set (90 columns: adds `Slug`, `Image Alt Text`, gallery
+  images 01–20 each with an alt-text column, etc.), followed by an **`Attributes`
+  marker + one column for every global product attribute in the store + a `Meta`
+  marker**. So a blank-sheet export produces a sheet that fully round-trips,
+  including variable products' attribute values. Export now also outputs the `Slug`
+  column. (Export still respects an existing header row when the sheet already has
+  one.)
 - **Blank variation SKUs are auto-generated as `<parent SKU>-NN`.** Previously a
   blank variation SKU got a generic `auto-<timestamp>` value, which was unreadable
   and could collide (same-second variations generating the same value). Now a

@@ -127,7 +127,7 @@ class WC_GS_Product_Exporter {
         // left blank (the parent row owns them).
         if ($mode === 'variation') {
             $parent_only = array(
-                'Name', 'Description', 'Visibility', 'Catalog Visibility', 'Password',
+                'Name', 'Slug', 'Description', 'Visibility', 'Catalog Visibility', 'Password',
                 'Featured', 'Category Path', 'Tags', 'Upsells', 'Cross-sells',
                 'Sold Individually', 'Tax Status', 'Purchase Note', 'Position',
                 'Allow Reviews',
@@ -156,6 +156,7 @@ class WC_GS_Product_Exporter {
                 return ($low === '' || $low === null) ? '' : $low;
             case 'Sold Individually': return $product->get_sold_individually() ? 'yes' : 'no';
             case 'Name': return $product->get_name();
+            case 'Slug': return $product->get_slug();
             case 'Description': return $product->get_description();
             case 'Short Description': return $product->get_short_description();
             case 'Type': return $product->get_type();
