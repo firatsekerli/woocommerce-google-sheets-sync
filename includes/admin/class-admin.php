@@ -38,7 +38,10 @@ class WC_GS_Admin {
      * (e.g. the free tier hooks `wc_gs_sync_max_sheets` to return 1).
      */
     public static function get_max_sheets() {
-        return (int) apply_filters('wc_gs_sync_max_sheets', 0);
+        // Pro gate: more than one connected sheet requires a Pro license once
+        // enforcement is on. Default (enforcement off) stays unlimited.
+        $default = (function_exists('wc_gs_can') && !wc_gs_can('multi_sheet')) ? 1 : 0;
+        return (int) apply_filters('wc_gs_sync_max_sheets', $default);
     }
 
     /**

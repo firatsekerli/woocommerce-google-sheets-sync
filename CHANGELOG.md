@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Licensing client (`WC_GS_License`).** A license client for *License Manager
+  for WooCommerce* (LMFWC) with activate / re-check / remove, cached status, a
+  daily background re-validation, and an offline grace period
+  (`wc_gs_license_grace_days`, default 14) so a brief store outage doesn't lock
+  paying customers out. A **License** section on the Settings tab manages the key.
+  Four Pro feature gates are wired through a single `wc_gs_can()` helper:
+  `variable_products` (import + export), `auto_sync` (scheduling + run),
+  `multi_sheet` (connected-sheet limit), and `advanced_fields` (custom Meta/ACF/SEO
+  columns + multiple category paths). **Enforcement is OFF by default** — until a
+  site sets `WC_GS_LICENSE_ENFORCE` (or filters `wc_gs_license_enforced` true),
+  every feature stays available and behavior is unchanged. Store URL and REST
+  credentials come from `WC_GS_LICENSE_STORE_URL` / `WC_GS_LICENSE_CK` /
+  `WC_GS_LICENSE_CS` (never committed). See `docs/LICENSING.md`.
+
 ## [1.3.0] - 2026-07-20
 
 ### Added

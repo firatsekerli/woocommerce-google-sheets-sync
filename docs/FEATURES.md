@@ -280,12 +280,38 @@ Bracketed tags in an attribute's **header** control that attribute (combinable):
 | `wc_gs_batch_time_limit` | Per-batch wall-clock budget (seconds) | `15` |
 | `wc_gs_sheet_read_columns` | Column span read from the sheet | `ZZ` |
 | `wc_gs_debug_logging` | Force debug logging on/off | WP_DEBUG or setting |
+| `wc_gs_license_enforced` | Turn Pro gating on/off | `false` (or `WC_GS_LICENSE_ENFORCE`) |
+| `wc_gs_license_base_requires_license` | Require a license for base features too | `false` |
+| `wc_gs_license_tier_for_product` | Map an LMFWC productId → tier | any valid → `pro` |
+| `wc_gs_license_grace_days` | Offline grace before downgrading | `14` |
+| `wc_gs_license_can` | Override a single gate decision | (computed) |
 
 Background hook: `wc_gs_process_sync_batch` (Action Scheduler, group `wc-gs-sync`).
 
 ---
 
-## 18. Known constraints
+## 18. Licensing (Pro gating)
+
+The plugin ships one build with an optional Pro layer (`WC_GS_License`) that
+talks to *License Manager for WooCommerce* on the store. **Enforcement is OFF by
+default**, so every feature below is available until a site turns it on
+(`WC_GS_LICENSE_ENFORCE` or the `wc_gs_license_enforced` filter). Gated features:
+
+| Feature key | Gates |
+|---|---|
+| `variable_products` | Variable-product import **and** export (variation rows) |
+| `auto_sync` | Scheduled automatic syncing |
+| `multi_sheet` | More than one connected sheet |
+| `advanced_fields` | Custom `Meta` columns (ACF/SEO) + multiple category paths |
+
+Everything else (simple products, manual import/export, all standard fields, one
+sheet) is base. A **License** section on the Settings tab activates, re-checks,
+and removes a key; status is cached and re-validated daily with a grace period.
+See `docs/LICENSING.md` for the full model and store-side setup.
+
+---
+
+## 19. Known constraints
 
 - **Attribute term order is global** per attribute taxonomy (see §5.3).
 - A variable parent synced with **zero variation rows keeps** its existing

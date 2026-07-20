@@ -51,9 +51,18 @@ feature work for launch.
       / `Download *` columns to `Type === simple`** — those flags only exist on
       simple products in WooCommerce. Not needed today because the plugin only ever
       creates simple products, so those columns can't reach another type yet.
-- [ ] **Licensing / freemium layer.** Add a provider (Lemon Squeezy / Paddle /
-      Freemius) and wire the gates: connected-sheet limit (hook
-      `wc_gs_sync_max_sheets` already exists), variable products, and auto-sync.
+- [~] **Licensing / freemium layer.** Client built (`includes/class-wc-gs-license.php`,
+      `WC_GS_License`) against **License Manager for WooCommerce** (LMFWC) REST;
+      see `docs/LICENSING.md`. Four Pro gates wired via `wc_gs_can()`:
+      `variable_products` (import + export), `auto_sync` (schedule + run),
+      `multi_sheet` (feeds `wc_gs_sync_max_sheets`), `advanced_fields` (custom
+      Meta/ACF/SEO columns + multi-category paths). A **License** section on the
+      Settings tab activates/removes/re-checks a key. **Enforcement is OFF by
+      default** (`WC_GS_LICENSE_ENFORCE` / `wc_gs_license_enforced`), so behavior
+      is unchanged until the store side is live. Remaining before charging:
+      stand up LMFWC on the store, set the store URL + API credentials
+      (`WC_GS_LICENSE_STORE_URL` / `_CK` / `_CS`), decide the tier split
+      (free-base+Pro vs Standard+Pro), then flip enforcement on.
 - [x] **Removed the "unverified app" warning.** The plugin now requests only the
       non-sensitive `drive.file` scope and lets the user choose the spreadsheet
       with the Google Picker, so there is no "Google hasn't verified this app"

@@ -133,6 +133,9 @@ class WC_Google_Sheets_Sync {
     private function init_ajax_handlers() {
         // Include required dependencies first
         $this->include_required_classes();
+
+        // Boot the license client (enforcement is off by default).
+        WC_GS_License::instance();
         
         // Include and initialize sync handler (which registers AJAX actions)
         if (file_exists(WC_GS_SYNC_PLUGIN_PATH . 'includes/class-wc-gs-sync-handler.php')) {
@@ -148,6 +151,7 @@ class WC_Google_Sheets_Sync {
      */
     private function include_required_classes() {
         $required_files = array(
+            'includes/class-wc-gs-license.php',
             'includes/class-google-sheets-api.php',
             'includes/class-wc-gs-product-data-builder.php',
             'includes/admin/class-settings.php'

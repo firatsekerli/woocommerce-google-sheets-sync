@@ -75,7 +75,9 @@ class WC_GS_Sync_Handler {
      */
     public function update_sync_schedule() {
         $options  = get_option('wc_gs_sync_options', array());
-        $enabled  = !empty($options['auto_sync_enabled']);
+        // Pro gate: scheduled auto-sync requires a Pro license once enforcement
+        // is on. No-op while enforcement is off.
+        $enabled  = !empty($options['auto_sync_enabled']) && wc_gs_can('auto_sync');
         $interval = isset($options['auto_sync_interval']) ? $options['auto_sync_interval'] : 'hourly';
 
         $valid_intervals = array('hourly', 'twicedaily', 'daily', 'weekly');
@@ -102,7 +104,7 @@ class WC_GS_Sync_Handler {
      */
     public function run_scheduled_sync() {
         $options = get_option('wc_gs_sync_options', array());
-        if (empty($options['auto_sync_enabled'])) {
+        if (empty($options['auto_sync_enabled']) || !wc_gs_can('auto_sync')) {
             return;
         }
 
@@ -882,6 +884,21 @@ class WC_GS_Sync_Handler {
         if ($force_idx !== false && isset($row[$force_idx])
             && in_array(strtolower(trim((string) $row[$force_idx])), array('yes', 'y', '1', 'true', 'force'), true)) {
             $state['clear_force_update'][] = $google_sheet_row;
+        }
+
+        // Pro gate: variable products (parents + variations) require a Pro
+        // license once enforcement is on. No-op while enforcement is off, so
+        // this changes nothing for unlicensed builds today.
+        if (($kind === 'variable' || $kind === 'variation') && !wc_gs_can('variable_products')) {
+            $state['skipped']++;
+            $state['sync_results'][$google_sheet_row] = array(
+                'status' => 'error',
+                'action' => 'skipped',
+                'product_id' => 0,
+                'error' => __('Variable products require a Pro license.', 'wc-google-sheets-sync'),
+            );
+            wc_gs_log('WC_GS_Sync: Row ' . $google_sheet_row . ' skipped (variable products need a Pro license)');
+            return;
         }
 
         try {

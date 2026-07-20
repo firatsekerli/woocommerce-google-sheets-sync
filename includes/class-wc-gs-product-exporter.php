@@ -23,6 +23,11 @@ class WC_GS_Product_Exporter {
      */
     public function build_product_rows($product, $headers) {
         if ($product->get_type() === 'variable') {
+            // Pro gate: exporting variable products (variation rows) requires a
+            // Pro license once enforcement is on. No-op while enforcement is off.
+            if (!wc_gs_can('variable_products')) {
+                return array();
+            }
             $rows = array($this->build_row($product, $headers, 'parent'));
             foreach ($product->get_children() as $child_id) {
                 $variation = wc_get_product($child_id);

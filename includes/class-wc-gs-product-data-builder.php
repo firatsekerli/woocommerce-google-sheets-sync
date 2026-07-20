@@ -64,7 +64,12 @@ class WC_GS_Product_Data_Builder {
         $category_path = $get("Category Path");
 
         if ($category_path) {
-            $path_separator = apply_filters('wc_gs_category_path_separator', '|');
+            // Pro gate: multiple category paths are an advanced field. Without a
+            // Pro license (once enforcement is on) the "|" separator is ignored
+            // and the value is treated as a single path. No-op while off.
+            $path_separator = wc_gs_can('advanced_fields')
+                ? apply_filters('wc_gs_category_path_separator', '|')
+                : '';
             $paths = ($path_separator !== '' && strpos($category_path, $path_separator) !== false)
                 ? explode($path_separator, $category_path)
                 : array($category_path);
@@ -393,6 +398,12 @@ class WC_GS_Product_Data_Builder {
      */
     private function build_custom_meta($row, $headers) {
         $meta = array();
+
+        // Pro gate: custom Meta columns (ACF/SEO) are an advanced field. Without
+        // a Pro license (once enforcement is on) they are ignored. No-op while off.
+        if (!wc_gs_can('advanced_fields')) {
+            return $meta;
+        }
 
         $start = array_search('Meta', $headers);
         if ($start === false) {

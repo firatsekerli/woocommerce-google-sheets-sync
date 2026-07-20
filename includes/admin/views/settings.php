@@ -18,6 +18,17 @@ $options = $settings->get_options();
 if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
     echo '<div class="notice notice-success is-dismissible"><p>' . __('Settings saved successfully!', 'wc-google-sheets-sync') . '</p></div>';
 }
+
+// License action feedback
+if (isset($_GET['license_msg'])) {
+    $ok = $_GET['license_msg'] === 'ok';
+    $txt = isset($_GET['license_txt']) ? sanitize_text_field(wp_unslash($_GET['license_txt'])) : '';
+    if ($txt !== '') {
+        echo '<div class="notice ' . ($ok ? 'notice-success' : 'notice-error') . ' is-dismissible"><p>' . esc_html($txt) . '</p></div>';
+    }
+}
+
+$wc_gs_license = class_exists('WC_GS_License') ? WC_GS_License::instance() : null;
 ?>
 
 <div class="wrap wc-gs-sync-wrap">
@@ -135,8 +146,72 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
         
         <?php submit_button(__('Save Settings', 'wc-google-sheets-sync')); ?>
     </form>
-    
+
     <hr>
+
+    <?php if ($wc_gs_license) :
+        $lic_key    = $wc_gs_license->key();
+        $lic_status = $wc_gs_license->status();
+        $lic_tier   = $wc_gs_license->tier();
+        $enforced   = $wc_gs_license->enforced();
+        $status_labels = array(
+            'valid'    => __('Active', 'wc-google-sheets-sync'),
+            'expired'  => __('Expired', 'wc-google-sheets-sync'),
+            'invalid'  => __('Invalid', 'wc-google-sheets-sync'),
+            'inactive' => __('Not activated', 'wc-google-sheets-sync'),
+        );
+        $status_label = isset($status_labels[$lic_status]) ? $status_labels[$lic_status] : $lic_status;
+    ?>
+    <h2><?php _e('License', 'wc-google-sheets-sync'); ?></h2>
+    <table class="form-table">
+        <tr>
+            <th scope="row"><?php _e('Status', 'wc-google-sheets-sync'); ?></th>
+            <td>
+                <strong><?php echo esc_html($status_label); ?></strong>
+                <?php if ($lic_status === 'valid') : ?>
+                    <span>— <?php echo esc_html(ucfirst($lic_tier)); ?></span>
+                    <?php if ($wc_gs_license->expires_at() > 0) : ?>
+                        <span class="description">(<?php printf(__('renews/expires %s', 'wc-google-sheets-sync'), esc_html(date_i18n(get_option('date_format'), $wc_gs_license->expires_at()))); ?>)</span>
+                    <?php endif; ?>
+                <?php endif; ?>
+                <?php if (!$enforced) : ?>
+                    <p class="description"><?php _e('All features are currently available (license enforcement is off). Activating a key is optional until enforcement is enabled.', 'wc-google-sheets-sync'); ?></p>
+                <?php endif; ?>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php _e('License Key', 'wc-google-sheets-sync'); ?></th>
+            <td>
+                <?php if ($lic_key === '') : ?>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;">
+                        <?php wp_nonce_field('wc_gs_license_nonce'); ?>
+                        <input type="hidden" name="action" value="wc_gs_license">
+                        <input type="hidden" name="license_op" value="activate">
+                        <input type="text" name="license_key" value="" class="regular-text" placeholder="<?php esc_attr_e('Enter your license key', 'wc-google-sheets-sync'); ?>" />
+                        <?php submit_button(__('Activate', 'wc-google-sheets-sync'), 'primary', 'submit', false); ?>
+                    </form>
+                <?php else : ?>
+                    <code><?php echo esc_html($wc_gs_license->mask_key($lic_key)); ?></code>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline; margin-left:8px;">
+                        <?php wp_nonce_field('wc_gs_license_nonce'); ?>
+                        <input type="hidden" name="action" value="wc_gs_license">
+                        <input type="hidden" name="license_op" value="refresh">
+                        <?php submit_button(__('Re-check', 'wc-google-sheets-sync'), 'secondary', 'submit', false); ?>
+                    </form>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;">
+                        <?php wp_nonce_field('wc_gs_license_nonce'); ?>
+                        <input type="hidden" name="action" value="wc_gs_license">
+                        <input type="hidden" name="license_op" value="deactivate">
+                        <?php submit_button(__('Remove', 'wc-google-sheets-sync'), 'delete', 'submit', false); ?>
+                    </form>
+                <?php endif; ?>
+                <p class="description"><?php _e('A Pro license unlocks variable products, scheduled auto-sync, multiple connected sheets, and advanced fields (custom Meta/ACF/SEO columns and multiple category paths).', 'wc-google-sheets-sync'); ?></p>
+            </td>
+        </tr>
+    </table>
+
+    <hr>
+    <?php endif; ?>
 
     <h2><?php _e('Setup Instructions', 'wc-google-sheets-sync'); ?></h2>
     <ol>

@@ -16,6 +16,7 @@ delete_option('wc_gs_sync_db_version');
 delete_option('wc_gs_sync_access_token');
 delete_option('wc_gs_sync_connected_sheets');
 delete_option('wc_gs_sync_last_sync_time');
+delete_option('wc_gs_license');
 
 // Drop custom tables
 global $wpdb;
