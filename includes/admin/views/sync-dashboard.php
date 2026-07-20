@@ -16,7 +16,7 @@ try {
     $is_authenticated = $google_api->is_authenticated();
     $user_info = $is_authenticated ? $google_api->get_user_info() : false;
 } catch (Exception $e) {
-    error_log('WC Google Sheets Dashboard Error: ' . $e->getMessage());
+    wc_gs_log('WC Google Sheets Dashboard Error: ' . $e->getMessage());
     $is_authenticated = false;
     $user_info = false;
 }

@@ -36,6 +36,29 @@ if (file_exists(WC_GS_SYNC_PLUGIN_PATH . 'vendor/autoload.php')) {
     require_once WC_GS_SYNC_PLUGIN_PATH . 'vendor/autoload.php';
 }
 
+if (!function_exists('wc_gs_log')) {
+    /**
+     * Gated debug logger. Writes to the PHP error log only when debug logging is
+     * enabled — either WordPress `WP_DEBUG` is on, or the plugin's "Debug logging"
+     * setting is on (off by default). So a normal production sync writes nothing
+     * and the log file doesn't grow. Filterable via `wc_gs_debug_logging`.
+     */
+    function wc_gs_log($message) {
+        static $enabled = null;
+        if ($enabled === null) {
+            $on = (defined('WP_DEBUG') && WP_DEBUG);
+            if (!$on) {
+                $options = get_option('wc_gs_sync_options', array());
+                $on = !empty($options['debug_logging']);
+            }
+            $enabled = (bool) apply_filters('wc_gs_debug_logging', $on);
+        }
+        if ($enabled) {
+            error_log(is_scalar($message) ? (string) $message : print_r($message, true));
+        }
+    }
+}
+
 /**
  * Main Plugin Class
  */

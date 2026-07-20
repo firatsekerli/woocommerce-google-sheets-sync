@@ -91,9 +91,9 @@ class WC_GS_Sync_Handler {
 
         if ($enabled) {
             wp_schedule_event(time() + MINUTE_IN_SECONDS, $interval, 'wc_gs_sync_scheduled_import');
-            error_log('WC_GS_Sync: Auto-sync scheduled (' . $interval . ')');
+            wc_gs_log('WC_GS_Sync: Auto-sync scheduled (' . $interval . ')');
         } else {
-            error_log('WC_GS_Sync: Auto-sync disabled, schedule cleared');
+            wc_gs_log('WC_GS_Sync: Auto-sync disabled, schedule cleared');
         }
     }
 
@@ -337,7 +337,7 @@ class WC_GS_Sync_Handler {
                         'letter' => $this->column_index_to_letter($index),
                         'header' => $header_name
                     );
-                    error_log('WC_GS_Sync: Found ' . $field . ' column: "' . $header_name . '" at index ' . $index . ' (column ' . $columns[$field]['letter'] . ')');
+                    wc_gs_log('WC_GS_Sync: Found ' . $field . ' column: "' . $header_name . '" at index ' . $index . ' (column ' . $columns[$field]['letter'] . ')');
                     break; // Found it, stop looking for this field
                 }
             }
@@ -517,7 +517,7 @@ class WC_GS_Sync_Handler {
 
         $offset = isset($state['next_offset']) ? (int) $state['next_offset'] : 0;
         as_enqueue_async_action('wc_gs_process_sync_batch', array($sync_id, $offset, 1), 'wc-gs-sync');
-        error_log('WC_GS_Sync: Resumed stalled sync ' . $sync_id . ' from offset ' . $offset);
+        wc_gs_log('WC_GS_Sync: Resumed stalled sync ' . $sync_id . ' from offset ' . $offset);
     }
 
     /**
@@ -561,7 +561,7 @@ class WC_GS_Sync_Handler {
             $progress['completed_at'] = current_time('mysql');
             set_transient('wc_gs_sync_progress_' . $sync_id, $progress, HOUR_IN_SECONDS);
 
-            error_log('WC_GS_Sync: Sync ' . $sync_id . ' cancelled by user');
+            wc_gs_log('WC_GS_Sync: Sync ' . $sync_id . ' cancelled by user');
         }
 
         wp_send_json_success(array('message' => 'Sync cancelled.'));
@@ -584,7 +584,7 @@ class WC_GS_Sync_Handler {
         $t_read = microtime(true);
         $sheet_data = $this->get_sheet_data($sheet_config);
         $read_ms = (int) round((microtime(true) - $t_read) * 1000);
-        error_log('WC_GS_Timing: sheet read = ' . $read_ms . 'ms');
+        wc_gs_log('WC_GS_Timing: sheet read = ' . $read_ms . 'ms');
 
         if (is_wp_error($sheet_data)) {
             $this->update_sync_progress($sync_id, array(
@@ -637,7 +637,7 @@ class WC_GS_Sync_Handler {
         // Action Scheduler async queue runner can lag many seconds on some hosts
         // (blocked loopback). We run inline up to a time budget and hand only the
         // remainder off to the background queue for large catalogs.
-        error_log('WC_GS_Timing: starting first batch inline');
+        wc_gs_log('WC_GS_Timing: starting first batch inline');
         $this->process_sync_batch($sync_id, 0);
 
         return $sync_id;
@@ -736,7 +736,7 @@ class WC_GS_Sync_Handler {
     public function run_sync_batch($sync_id, $offset) {
         $job = get_option('wc_gs_sync_job_' . $sync_id);
         if (!is_array($job)) {
-            error_log('WC_GS_Sync: Batch aborted, job data missing for ' . $sync_id);
+            wc_gs_log('WC_GS_Sync: Batch aborted, job data missing for ' . $sync_id);
             return null;
         }
 
@@ -762,7 +762,7 @@ class WC_GS_Sync_Handler {
             $dispatch_ms = (int) round((microtime(true) - $job['enqueued_at']) * 1000);
             $state['dispatch_ms'] = $dispatch_ms;
             $state['read_ms'] = isset($job['read_ms']) ? (int) $job['read_ms'] : 0;
-            error_log('WC_GS_Timing: queue dispatch latency (enqueue -> first batch) = ' . $dispatch_ms . 'ms');
+            wc_gs_log('WC_GS_Timing: queue dispatch latency (enqueue -> first batch) = ' . $dispatch_ms . 'ms');
         }
 
         $t_batch = microtime(true);
@@ -803,7 +803,7 @@ class WC_GS_Sync_Handler {
                 }
             }
         } catch (Exception $e) {
-            error_log('WC_GS_Sync: Fatal batch error for ' . $sync_id . ': ' . $e->getMessage());
+            wc_gs_log('WC_GS_Sync: Fatal batch error for ' . $sync_id . ': ' . $e->getMessage());
             $this->update_sync_progress($sync_id, array(
                 'status' => 'error',
                 'current_step' => 'Sync failed: ' . $e->getMessage(),
@@ -816,7 +816,7 @@ class WC_GS_Sync_Handler {
 
         $batch_ms = (int) round((microtime(true) - $t_batch) * 1000);
         $state['process_ms'] = (isset($state['process_ms']) ? (int) $state['process_ms'] : 0) + $batch_ms;
-        error_log('WC_GS_Timing: batch at offset ' . (int) $offset . ' processed ' . $processed_in_slice . ' row(s) in ' . $batch_ms . 'ms');
+        wc_gs_log('WC_GS_Timing: batch at offset ' . (int) $offset . ' processed ' . $processed_in_slice . ' row(s) in ' . $batch_ms . 'ms');
 
         // Advance by the number actually processed (may be < batch_size if the
         // per-batch time budget cut the slice short).
@@ -861,7 +861,7 @@ class WC_GS_Sync_Handler {
         if ($status_idx !== false && isset($row[$status_idx])
             && strtolower(trim((string) $row[$status_idx])) === 'deleted') {
             $state['skipped']++;
-            error_log('WC_GS_Sync: Row ' . $google_sheet_row . ' skipped (Sync Status = deleted)');
+            wc_gs_log('WC_GS_Sync: Row ' . $google_sheet_row . ' skipped (Sync Status = deleted)');
             return;
         }
 
@@ -949,7 +949,7 @@ class WC_GS_Sync_Handler {
                 'product_id' => null,
                 'error' => $e->getMessage(),
             );
-            error_log('WC_GS_Sync: Error processing row ' . $google_sheet_row . ': ' . $e->getMessage());
+            wc_gs_log('WC_GS_Sync: Error processing row ' . $google_sheet_row . ': ' . $e->getMessage());
         }
     }
 
@@ -1036,12 +1036,12 @@ class WC_GS_Sync_Handler {
             'Done in %.1fs (read %.1fs, queue wait %.1fs, process %.1fs, write-back %.1fs)',
             $total_ms / 1000, $read_ms / 1000, $dispatch_ms / 1000, $process_ms / 1000, $writeback_ms / 1000
         );
-        error_log('WC_GS_Timing: ' . $timing_summary);
+        wc_gs_log('WC_GS_Timing: ' . $timing_summary);
 
         // Log the product/variation breakdown so variation activity is visible.
         if (is_array($state)) {
             $variations_total = (int) ($state['variations_created'] + $state['variations_updated'] + $state['variations_deleted'] + $state['variations_skipped']);
-            error_log(sprintf(
+            wc_gs_log(sprintf(
                 'WC_GS_Sync: Products — created %d, updated %d, deleted %d, skipped %d. Variations — total %d (created %d, updated %d, deleted %d, skipped %d). Errors %d.',
                 (int) $state['created'], (int) $state['updated'], (int) $state['deleted'], (int) $state['skipped'],
                 $variations_total,
@@ -1091,7 +1091,7 @@ class WC_GS_Sync_Handler {
                     if ($orphan && $orphan->get_type() === 'variation') {
                         $orphan->delete(true); // force delete (variations have no trash)
                         $state['variations_deleted']++;
-                        error_log('WC_GS_Sync: Deleted orphan variation ' . (int) $child_id . ' of parent ' . (int) $parent_id);
+                        wc_gs_log('WC_GS_Sync: Deleted orphan variation ' . (int) $child_id . ' of parent ' . (int) $parent_id);
                     }
                 }
             }
@@ -1163,10 +1163,10 @@ class WC_GS_Sync_Handler {
      * NEW: Write sync results back to Google Sheets (IDs, status, errors, timestamps)
      */
     private function write_sync_results_back($sync_id, $sheet_config, $headers, $product_ids, $sku_write_backs, $quantity_write_backs, $gtin_write_backs, $sync_results, $clear_delete = array(), $clear_force_update = array()) {
-        error_log('WC_GS_Sync: *** WRITE-BACK FUNCTION CALLED - NEW CODE RUNNING ***');
+        wc_gs_log('WC_GS_Sync: *** WRITE-BACK FUNCTION CALLED - NEW CODE RUNNING ***');
         
         if (empty($product_ids) && empty($sku_write_backs) && empty($quantity_write_backs) && empty($sync_results) && empty($clear_delete) && empty($clear_force_update)) {
-			error_log('WC_GS_Sync: No data to write back');
+			wc_gs_log('WC_GS_Sync: No data to write back');
 			return;
 		}
         
@@ -1175,15 +1175,15 @@ class WC_GS_Sync_Handler {
                 'current_step' => 'Writing sync results back to sheet...'
             ));
             
-            error_log('WC_GS_Sync: Starting write-back for ' . count($sync_results) . ' rows');
-            error_log('WC_GS_Sync: Product IDs: ' . print_r($product_ids, true));
-			error_log('WC_GS_Sync: SKU write-backs: ' . print_r($sku_write_backs, true));
-            error_log('WC_GS_Sync: Sync results: ' . print_r($sync_results, true));
+            wc_gs_log('WC_GS_Sync: Starting write-back for ' . count($sync_results) . ' rows');
+            wc_gs_log('WC_GS_Sync: Product IDs: ' . print_r($product_ids, true));
+			wc_gs_log('WC_GS_Sync: SKU write-backs: ' . print_r($sku_write_backs, true));
+            wc_gs_log('WC_GS_Sync: Sync results: ' . print_r($sync_results, true));
             
             $google_api = $this->get_google_api();
             
             if (!$google_api->is_authenticated()) {
-                error_log('WC_GS_Sync: Cannot write back - not authenticated');
+                wc_gs_log('WC_GS_Sync: Cannot write back - not authenticated');
                 return;
             }
             
@@ -1191,7 +1191,7 @@ class WC_GS_Sync_Handler {
             $columns = $this->find_column_indices($headers);
             
             if (empty($columns)) {
-                error_log('WC_GS_Sync: No valid columns found for write-back');
+                wc_gs_log('WC_GS_Sync: No valid columns found for write-back');
                 return;
             }
             
@@ -1203,7 +1203,7 @@ class WC_GS_Sync_Handler {
             foreach ($sync_results as $row_number => $result) {
                 // ABSOLUTE SAFETY CHECK: Never write to header row (row 1) or invalid rows
                 if ($row_number < 2) {
-                    error_log('WC_GS_Sync: SKIPPING - Invalid row number: ' . $row_number . ' (header is row 1, data starts at row 2)');
+                    wc_gs_log('WC_GS_Sync: SKIPPING - Invalid row number: ' . $row_number . ' (header is row 1, data starts at row 2)');
                     continue;
                 }
 
@@ -1236,7 +1236,7 @@ class WC_GS_Sync_Handler {
 						'range' => $sheet_config['sheet_tab'] . '!' . $columns['sku']['letter'] . $row_number,
 						'values' => array(array($sku_write_backs[$row_number]))
 					);
-					error_log('WC_GS_Sync: Added SKU write-back for row ' . $row_number . ': ' . $sku_write_backs[$row_number]);
+					wc_gs_log('WC_GS_Sync: Added SKU write-back for row ' . $row_number . ': ' . $sku_write_backs[$row_number]);
 				}
 
 				// Clear SKU for deleted products
@@ -1253,7 +1253,7 @@ class WC_GS_Sync_Handler {
 						'range' => $sheet_config['sheet_tab'] . '!' . $columns['quantity']['letter'] . $row_number,
 						'values' => array(array($quantity_write_backs[$row_number]))
 					);
-					error_log('WC_GS_Sync: Added Quantity write-back for row ' . $row_number . ': ' . $quantity_write_backs[$row_number]);
+					wc_gs_log('WC_GS_Sync: Added Quantity write-back for row ' . $row_number . ': ' . $quantity_write_backs[$row_number]);
 				}
 
 				// Clear Quantity for deleted products
@@ -1270,7 +1270,7 @@ class WC_GS_Sync_Handler {
 						'range' => $sheet_config['sheet_tab'] . '!' . $columns['gtin']['letter'] . $row_number,
 						'values' => array(array($gtin_write_backs[$row_number])) // Could be empty string
 					);
-					error_log('WC_GS_Sync: Added GTIN write-back for row ' . $row_number . ': "' . $gtin_write_backs[$row_number] . '"');
+					wc_gs_log('WC_GS_Sync: Added GTIN write-back for row ' . $row_number . ': "' . $gtin_write_backs[$row_number] . '"');
 				}
 
 				// Clear GTIN for deleted products
@@ -1311,7 +1311,7 @@ class WC_GS_Sync_Handler {
                     );
                 }
                 
-                error_log('WC_GS_Sync: Prepared updates for row ' . $row_number . ' - Status: ' . $result['status'] . ', Product ID: ' . ($product_ids[$row_number] ?? 'none'));
+                wc_gs_log('WC_GS_Sync: Prepared updates for row ' . $row_number . ' - Status: ' . $result['status'] . ', Product ID: ' . ($product_ids[$row_number] ?? 'none'));
             }
 
             // Clear one-time action columns (Delete / Force Update) so they don't
@@ -1336,11 +1336,11 @@ class WC_GS_Sync_Handler {
             }
 
             if (empty($updates)) {
-                error_log('WC_GS_Sync: No valid updates after filtering - all rows were invalid');
+                wc_gs_log('WC_GS_Sync: No valid updates after filtering - all rows were invalid');
                 return;
             }
             
-            error_log('WC_GS_Sync: Prepared ' . count($updates) . ' total updates for batch write');
+            wc_gs_log('WC_GS_Sync: Prepared ' . count($updates) . ' total updates for batch write');
 
             // Write back in a few LARGE batchUpdate requests. The Google Sheets
             // values.batchUpdate endpoint accepts many ranges in a single request,
@@ -1367,7 +1367,7 @@ class WC_GS_Sync_Handler {
                     if (!is_wp_error($write_result)) {
                         break;
                     }
-                    error_log('WC_GS_Sync: Write-back batch ' . ($chunk_index + 1) . ' of ' . $chunk_count . ' attempt ' . $attempt . ' of ' . $max_retries . ' failed: ' . $write_result->get_error_message());
+                    wc_gs_log('WC_GS_Sync: Write-back batch ' . ($chunk_index + 1) . ' of ' . $chunk_count . ' attempt ' . $attempt . ' of ' . $max_retries . ' failed: ' . $write_result->get_error_message());
                     // Back off only on a real failure (rate limit / transient error).
                     if ($attempt < $max_retries && $delay_ms > 0) {
                         usleep($delay_ms * 1000);
@@ -1376,7 +1376,7 @@ class WC_GS_Sync_Handler {
 
                 if (is_wp_error($write_result)) {
                     $had_error = true;
-                    error_log('WC_GS_Sync: Failed to write back batch ' . ($chunk_index + 1) . ': ' . $write_result->get_error_message());
+                    wc_gs_log('WC_GS_Sync: Failed to write back batch ' . ($chunk_index + 1) . ': ' . $write_result->get_error_message());
                 } else {
                     $written += count($chunk);
                 }
@@ -1393,9 +1393,9 @@ class WC_GS_Sync_Handler {
             }
 
             if ($had_error) {
-                error_log('WC_GS_Sync: Write-back completed with errors; ' . $written . ' of ' . count($updates) . ' updates written');
+                wc_gs_log('WC_GS_Sync: Write-back completed with errors; ' . $written . ' of ' . count($updates) . ' updates written');
             } else {
-                error_log('WC_GS_Sync: Successfully wrote back ' . $written . ' updates including SKUs');
+                wc_gs_log('WC_GS_Sync: Successfully wrote back ' . $written . ' updates including SKUs');
 
                 // Update progress to show write-back completion
                 $this->update_sync_progress($sync_id, array(
@@ -1404,7 +1404,7 @@ class WC_GS_Sync_Handler {
             }
             
         } catch (Exception $e) {
-            error_log('WC_GS_Sync: Exception during write-back: ' . $e->getMessage());
+            wc_gs_log('WC_GS_Sync: Exception during write-back: ' . $e->getMessage());
         }
     }
     
@@ -1437,7 +1437,7 @@ class WC_GS_Sync_Handler {
             if (!is_wp_error($result)) {
                 break;
             }
-            error_log('WC_GS_Sync: Sheet read attempt ' . $attempt . ' of ' . $max_retries . ' failed: ' . $result->get_error_message());
+            wc_gs_log('WC_GS_Sync: Sheet read attempt ' . $attempt . ' of ' . $max_retries . ' failed: ' . $result->get_error_message());
             if ($attempt < $max_retries && $delay_ms > 0) {
                 usleep($delay_ms * 1000);
             }
@@ -1486,12 +1486,12 @@ class WC_GS_Sync_Handler {
      * UPDATED: Track when ID is missing for write-back
      */
     private function process_product_row($headers, $row, $row_number) {
-        error_log('WC_GS_Sync: === PROCESSING ROW ' . $row_number . ' ===');
+        wc_gs_log('WC_GS_Sync: === PROCESSING ROW ' . $row_number . ' ===');
         
         $data_builder = new WC_GS_Product_Data_Builder();
         $product_data = $data_builder->build_product_data($row, $headers);
         
-        error_log('WC_GS_Sync: Built product data for row ' . $row_number . ': ' . print_r($product_data, true));
+        wc_gs_log('WC_GS_Sync: Built product data for row ' . $row_number . ': ' . print_r($product_data, true));
 		
 		// NEW: Check if SKU was originally empty
 		$original_sku = '';
@@ -1527,7 +1527,7 @@ class WC_GS_Sync_Handler {
 			$force_update = in_array(strtolower(trim(strval($row[$force_index]))), ['yes', 'y', '1', 'true', 'force']);
 		}
 
-		error_log('WC_GS_Sync: Row ' . $row_number . ' - Original SKU: ' . ($original_sku ?: 'empty') . ', Generated SKU: ' . $product_data['sku']);
+		wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Original SKU: ' . ($original_sku ?: 'empty') . ', Generated SKU: ' . $product_data['sku']);
 		
 		// NEW: Check if this is a delete request
 		$should_delete = $this->should_delete_product($product_data);
@@ -1547,13 +1547,13 @@ class WC_GS_Sync_Handler {
         $had_empty_id = empty($product_data['id']); // Track if ID was originally empty
         $match_method = 'none';
         
-        error_log('WC_GS_Sync: Row ' . $row_number . ' - Original ID: ' . ($product_data['id'] ?? 'empty') . ', SKU: ' . ($product_data['sku'] ?? 'empty') . ', Name: ' . ($product_data['name'] ?? 'empty'));
+        wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Original ID: ' . ($product_data['id'] ?? 'empty') . ', SKU: ' . ($product_data['sku'] ?? 'empty') . ', Name: ' . ($product_data['name'] ?? 'empty'));
         
         // First check by ID
         if (!empty($product_data['id'])) {
             $existing_product = wc_get_product($product_data['id']);
             $match_method = 'ID';
-            error_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by ID: ' . $product_data['id'] . ' -> ' . ($existing_product ? 'Found product ' . $existing_product->get_id() : 'Not found'));
+            wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by ID: ' . $product_data['id'] . ' -> ' . ($existing_product ? 'Found product ' . $existing_product->get_id() : 'Not found'));
         } 
         // Then check by SKU
         elseif (!empty($product_data['sku'])) {
@@ -1561,30 +1561,30 @@ class WC_GS_Sync_Handler {
             if ($product_id) {
                 $existing_product = wc_get_product($product_id);
                 $match_method = 'SKU';
-                error_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by SKU: ' . $product_data['sku'] . ' -> Found product ' . $product_id);
+                wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by SKU: ' . $product_data['sku'] . ' -> Found product ' . $product_id);
             } else {
-                error_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by SKU: ' . $product_data['sku'] . ' -> Not found');
+                wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by SKU: ' . $product_data['sku'] . ' -> Not found');
             }
         }
         // Finally check by Name to prevent duplicates
         elseif (!empty($product_data['name'])) {
             $existing_product = $this->find_product_by_name($product_data['name']);
             $match_method = 'Name';
-            error_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by Name: ' . $product_data['name'] . ' -> ' . ($existing_product ? 'Found product ' . $existing_product->get_id() : 'Not found'));
+            wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Checking by Name: ' . $product_data['name'] . ' -> ' . ($existing_product ? 'Found product ' . $existing_product->get_id() : 'Not found'));
         }
         
         if ($existing_product && $existing_product->get_id()) {
 			// Update existing product
 			$found_product_id = $existing_product->get_id();
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - UPDATING existing product ' . $found_product_id . ' (matched by ' . $match_method . ')');
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - UPDATING existing product ' . $found_product_id . ' (matched by ' . $match_method . ')');
 			
 			// CRITICAL FIX: Capture current WooCommerce values BEFORE updating the product
 			$current_sku_before_update = $existing_product->get_sku();
 			$current_gtin_before_update = $existing_product->get_meta('_global_unique_id');
 			$current_quantity_before_update = $existing_product->get_stock_quantity(); // NEW: Add this line
 			
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - BEFORE UPDATE - WC SKU: "' . $current_sku_before_update . '", WC GTIN: "' . $current_gtin_before_update . '"');
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - SHEET VALUES - SKU: "' . $original_sku . '", GTIN: "' . $original_gtin . '"');
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - BEFORE UPDATE - WC SKU: "' . $current_sku_before_update . '", WC GTIN: "' . $current_gtin_before_update . '"');
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - SHEET VALUES - SKU: "' . $original_sku . '", GTIN: "' . $original_gtin . '"');
 			
 			// SIMPLIFIED BIDIRECTIONAL LOGIC - Replace the complex logic in process_product_row()
 
@@ -1604,16 +1604,16 @@ class WC_GS_Sync_Handler {
 			// recently modified so the sheet values always win.
 			if ($force_update) {
 				$product_recently_modified = false;
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - Force Update enabled, sheet values will overwrite WooCommerce');
+				wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Force Update enabled, sheet values will overwrite WooCommerce');
 			}
 
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - Product modified: ' . date('Y-m-d H:i:s', $product_modified) . ', Last sync: ' . date('Y-m-d H:i:s', $sheet_last_synced) . ', Recently modified: ' . ($product_recently_modified ? 'YES' : 'NO'));
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Product modified: ' . date('Y-m-d H:i:s', $product_modified) . ', Last sync: ' . date('Y-m-d H:i:s', $sheet_last_synced) . ', Recently modified: ' . ($product_recently_modified ? 'YES' : 'NO'));
 
 			// SKU: the sheet is the source of truth, so the sheet value always wins
 			// — we no longer overwrite the sheet with a SKU changed in WooCommerce.
 			// (The auto-generated-SKU case is just the sheet/generated value too.)
 			if ($had_empty_sku && !empty($product_data['sku'])) {
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU auto-generated: using "' . $product_data['sku'] . '"');
+				wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - SKU auto-generated: using "' . $product_data['sku'] . '"');
 			}
 			// product_data['sku'] keeps the sheet value; no Woo->sheet SKU write-back.
 
@@ -1625,7 +1625,7 @@ class WC_GS_Sync_Handler {
 			$current_quantity_str = ($current_quantity_before_update !== null) ? strval($current_quantity_before_update) : '';
 			$original_quantity_str = ($original_quantity !== '') ? strval($original_quantity) : '';
 
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - Current WC Quantity: "' . $current_quantity_str . '", Sheet Quantity: "' . $original_quantity_str . '"');
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Current WC Quantity: "' . $current_quantity_str . '", Sheet Quantity: "' . $original_quantity_str . '"');
 
 			if ($current_quantity_str !== $original_quantity_str) {
 				// Values differ - decide who wins
@@ -1635,19 +1635,19 @@ class WC_GS_Sync_Handler {
 						$product_data['stock_quantity'] = $current_quantity_before_update;
 					}
 					$will_write_quantity_back = true;
-					error_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Product recently modified, preserving WooCommerce value "' . $current_quantity_str . '"');
+					wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Product recently modified, preserving WooCommerce value "' . $current_quantity_str . '"');
 				} else {
 					// Product NOT recently modified - use sheet value
-					error_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Product not recently modified, using sheet value "' . $original_quantity_str . '"');
+					wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Product not recently modified, using sheet value "' . $original_quantity_str . '"');
 					// Keep product_data['stock_quantity'] as-is (sheet value)
 				}
 			} else {
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Values match, no action needed');
+				wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Quantity: Values match, no action needed');
 			}
 
 			// Debug: Log final decision
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL DECISION: SKU write-back=' . ($will_write_sku_back ? 'YES' : 'NO') . ', GTIN write-back=' . ($will_write_gtin_back ? 'YES' : 'NO') . ', Quantity write-back=' . ($will_write_quantity_back ? 'YES' : 'NO'));
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL SKU to use: "' . ($product_data['sku'] ?? 'empty') . '"');
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL DECISION: SKU write-back=' . ($will_write_sku_back ? 'YES' : 'NO') . ', GTIN write-back=' . ($will_write_gtin_back ? 'YES' : 'NO') . ', Quantity write-back=' . ($will_write_quantity_back ? 'YES' : 'NO'));
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL SKU to use: "' . ($product_data['sku'] ?? 'empty') . '"');
 
 			// Find GTIN value that will be used
 			$final_gtin = '';
@@ -1659,7 +1659,7 @@ class WC_GS_Sync_Handler {
 					}
 				}
 			}
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL GTIN to use: "' . $final_gtin . '"');
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - FINAL GTIN to use: "' . $final_gtin . '"');
 			
 			// Change detection: skip the update when the data we would apply matches
 			// what was applied last time (unless Force Update is set, or the row
@@ -1674,7 +1674,7 @@ class WC_GS_Sync_Handler {
 			$type_matches = ($existing_product->get_type() === 'simple');
 
 			if (!$force_update && !$had_empty_id && $type_matches && $old_hash !== '' && $old_hash === $new_hash) {
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - no changes, skipping update');
+				wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - no changes, skipping update');
 				// Unchanged, so set_product_attributes won't run — keep the attribute
 				// term order aligned to the sheet anyway (guarded; no product save
 				// and a no-op once the order has been applied).
@@ -1709,27 +1709,27 @@ class WC_GS_Sync_Handler {
 			// Track what needs to be written back to sheet
 			if ($will_write_sku_back) {
 				$result['generated_sku'] = $current_sku_before_update;
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - Will write SKU back to sheet: "' . $current_sku_before_update . '"');
+				wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Will write SKU back to sheet: "' . $current_sku_before_update . '"');
 			}
 			
 			// NEW: Track quantity write-back
 			if ($will_write_quantity_back) {
 				$result['generated_quantity'] = $current_quantity_before_update;
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - Will write Quantity back to sheet: "' . $current_quantity_before_update . '"');
+				wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Will write Quantity back to sheet: "' . $current_quantity_before_update . '"');
 			}
 
 			if ($will_write_gtin_back) {
 				$result['gtin_changed'] = true;
 				$result['current_gtin'] = $current_gtin_before_update;
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - Will write GTIN back to sheet: "' . $current_gtin_before_update . '"');
+				wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Will write GTIN back to sheet: "' . $current_gtin_before_update . '"');
 			}
 			
-			error_log('WC_GS_Sync: Row ' . $row_number . ' - Update result: action=' . $result['action'] . ', product_id=' . $result['product_id'] . ', missing_id=' . ($result['missing_id'] ? 'true' : 'false'));
+			wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Update result: action=' . $result['action'] . ', product_id=' . $result['product_id'] . ', missing_id=' . ($result['missing_id'] ? 'true' : 'false'));
 			
 			return $result;
         } else {
             // Create new product
-            error_log('WC_GS_Sync: Row ' . $row_number . ' - CREATING new product (no existing product found)');
+            wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - CREATING new product (no existing product found)');
             
             $result = $this->create_product($product_data);
             $result['row_number'] = $row_number; // TRACK THE ROW NUMBER
@@ -1740,12 +1740,12 @@ class WC_GS_Sync_Handler {
                 update_post_meta($result['product_id'], '_wc_gs_data_hash', $this->compute_product_hash($product_data));
             }
             
-            error_log('WC_GS_Sync: Row ' . $row_number . ' - Create result: action=' . $result['action'] . ', product_id=' . $result['product_id']);
+            wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - Create result: action=' . $result['action'] . ', product_id=' . $result['product_id']);
 			
 			// NEW: Track SKU generation for new products
 			if ($had_empty_sku && !empty($product_data['sku'])) {
 				$result['generated_sku'] = $product_data['sku'];
-				error_log('WC_GS_Sync: Row ' . $row_number . ' - SKU was auto-generated for new product: ' . $product_data['sku']);
+				wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - SKU was auto-generated for new product: ' . $product_data['sku']);
 			}
             
             return $result;
@@ -1951,7 +1951,7 @@ class WC_GS_Sync_Handler {
         }
 
         wp_set_object_terms($product_id, 'simple', 'product_type');
-        error_log('WC_GS_Sync: Converted product ' . (int) $product_id . ' to simple');
+        wc_gs_log('WC_GS_Sync: Converted product ' . (int) $product_id . ' to simple');
 
         return new WC_Product_Simple($product_id);
     }
@@ -2039,7 +2039,7 @@ class WC_GS_Sync_Handler {
                     $n++;
                 } while (wc_get_product_id_by_sku($candidate));
                 $product_data['sku'] = $candidate;
-                error_log('WC_GS_Sync: Row ' . $row_number . ' - generated variation SKU "' . $candidate . '" from parent "' . $base . '"');
+                wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - generated variation SKU "' . $candidate . '" from parent "' . $base . '"');
             }
         }
 
@@ -2347,7 +2347,7 @@ class WC_GS_Sync_Handler {
             if (!$term) {
                 $inserted = wp_insert_term($value, $taxonomy);
                 if (is_wp_error($inserted)) {
-                    error_log('WC_GS_Sync: Failed to create variation term "' . $value . '" in ' . $taxonomy . ': ' . $inserted->get_error_message());
+                    wc_gs_log('WC_GS_Sync: Failed to create variation term "' . $value . '" in ' . $taxonomy . ': ' . $inserted->get_error_message());
                     continue;
                 }
                 $term = get_term($inserted['term_id'], $taxonomy);
@@ -2391,7 +2391,7 @@ class WC_GS_Sync_Handler {
         } elseif (isset($image_data['src']) && !empty($image_data['src'])) {
             $uploaded = $this->upload_image_from_url($image_data['src'], $variation_id);
             if (is_wp_error($uploaded)) {
-                error_log('WC_GS_Sync: Failed to upload variation image: ' . $uploaded->get_error_message());
+                wc_gs_log('WC_GS_Sync: Failed to upload variation image: ' . $uploaded->get_error_message());
                 return 0;
             }
             $image_id = (int) $uploaded;
@@ -2524,7 +2524,7 @@ class WC_GS_Sync_Handler {
 	 * NEW: Handle product deletion
 	 */
 	private function handle_product_deletion($product_data, $row_number) {
-		error_log('WC_GS_Sync: Row ' . $row_number . ' - DELETE REQUEST detected');
+		wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - DELETE REQUEST detected');
     
 		// Find the product to delete (same logic as your existing product matching)
 		$product_to_delete = null;
@@ -2569,7 +2569,7 @@ class WC_GS_Sync_Handler {
 			throw new Exception('Failed to delete product ID ' . $product_id);
 		}
 
-		error_log('WC_GS_Sync: Row ' . $row_number . ' - DELETE SUCCESS: Product ID ' . $product_id . ($force_delete ? ' deleted' : ' moved to Trash'));
+		wc_gs_log('WC_GS_Sync: Row ' . $row_number . ' - DELETE SUCCESS: Product ID ' . $product_id . ($force_delete ? ' deleted' : ' moved to Trash'));
     
 		return array(
 			'action' => 'deleted',
@@ -3000,7 +3000,7 @@ class WC_GS_Sync_Handler {
             if ($by_sku) {
                 $ids[] = (int) $by_sku;
             } else {
-                error_log('WC_GS_Sync: Upsell/Cross-sell reference not found: "' . $token . '"');
+                wc_gs_log('WC_GS_Sync: Upsell/Cross-sell reference not found: "' . $token . '"');
             }
         }
 
@@ -3094,7 +3094,7 @@ class WC_GS_Sync_Handler {
                 if (!$term) {
                     $inserted = wp_insert_term($value, $taxonomy);
                     if (is_wp_error($inserted)) {
-                        error_log('WC_GS_Sync: Failed to create attribute term "' . $value . '" in ' . $taxonomy . ': ' . $inserted->get_error_message());
+                        wc_gs_log('WC_GS_Sync: Failed to create attribute term "' . $value . '" in ' . $taxonomy . ': ' . $inserted->get_error_message());
                         continue;
                     }
                     $term_ids[] = (int) $inserted['term_id'];
@@ -3252,7 +3252,7 @@ class WC_GS_Sync_Handler {
         ));
 
         if (is_wp_error($attribute_id)) {
-            error_log('WC_GS_Sync: Failed to create global attribute "' . $name . '": ' . $attribute_id->get_error_message());
+            wc_gs_log('WC_GS_Sync: Failed to create global attribute "' . $name . '": ' . $attribute_id->get_error_message());
             return false;
         }
 
@@ -3326,7 +3326,7 @@ class WC_GS_Sync_Handler {
             case 'password':
                 $password = isset($product_data['post_password']) ? trim((string) $product_data['post_password']) : '';
                 if ($password === '') {
-                    error_log('WC_GS_Sync: Visibility "password" requested for product ' . $product_id . ' but no Password value was provided; leaving visibility unchanged');
+                    wc_gs_log('WC_GS_Sync: Visibility "password" requested for product ' . $product_id . ' but no Password value was provided; leaving visibility unchanged');
                     return;
                 }
                 $update['post_password'] = $password;
@@ -3349,7 +3349,7 @@ class WC_GS_Sync_Handler {
         // Only write if there is something to change beyond the ID
         if (count($update) > 1) {
             wp_update_post($update);
-            error_log('WC_GS_Sync: Applied post visibility "' . $visibility . '" to product ' . $product_id);
+            wc_gs_log('WC_GS_Sync: Applied post visibility "' . $visibility . '" to product ' . $product_id);
         }
     }
 
@@ -3428,11 +3428,11 @@ class WC_GS_Sync_Handler {
      */
     private function handle_product_images($product_id, $product_data) {
         // DEBUG: Log what we're receiving
-        error_log('WC_GS_Sync: Handling images for product ' . $product_id);
-        error_log('WC_GS_Sync: Image data received: ' . print_r($product_data['images'], true));
+        wc_gs_log('WC_GS_Sync: Handling images for product ' . $product_id);
+        wc_gs_log('WC_GS_Sync: Image data received: ' . print_r($product_data['images'], true));
         
         if (!isset($product_data['images']) || !is_array($product_data['images'])) {
-            error_log('WC_GS_Sync: No images array found or not an array');
+            wc_gs_log('WC_GS_Sync: No images array found or not an array');
             return;
         }
         
@@ -3449,26 +3449,26 @@ class WC_GS_Sync_Handler {
         
         // Process each new image
         foreach ($new_images as $image_data) {
-            error_log('WC_GS_Sync: Processing image: ' . print_r($image_data, true));
+            wc_gs_log('WC_GS_Sync: Processing image: ' . print_r($image_data, true));
             
             $position = isset($image_data['position']) ? intval($image_data['position']) : 0;
             
             // Check if we have an existing ID or need to upload from URL
             if (isset($image_data['id']) && !empty($image_data['id'])) {
                 $image_id = $image_data['id'];
-                error_log('WC_GS_Sync: Using existing image ID: ' . $image_id);
+                wc_gs_log('WC_GS_Sync: Using existing image ID: ' . $image_id);
             } elseif (isset($image_data['src']) && !empty($image_data['src'])) {
                 // Upload new image from URL
-                error_log('WC_GS_Sync: Uploading new image from URL: ' . $image_data['src']);
+                wc_gs_log('WC_GS_Sync: Uploading new image from URL: ' . $image_data['src']);
                 $image_id = $this->upload_image_from_url($image_data['src'], $product_id);
                 if (is_wp_error($image_id)) {
-                    error_log('WC_GS_Sync: Failed to upload image: ' . $image_id->get_error_message());
+                    wc_gs_log('WC_GS_Sync: Failed to upload image: ' . $image_id->get_error_message());
                     continue; // Skip failed uploads
                 } else {
-                    error_log('WC_GS_Sync: Successfully uploaded image, ID: ' . $image_id);
+                    wc_gs_log('WC_GS_Sync: Successfully uploaded image, ID: ' . $image_id);
                 }
             } else {
-                error_log('WC_GS_Sync: No ID or src found for image');
+                wc_gs_log('WC_GS_Sync: No ID or src found for image');
                 continue; // Skip if no ID or URL
             }
 
@@ -3481,26 +3481,26 @@ class WC_GS_Sync_Handler {
             // Assign to featured or gallery based on position
             if ($position === 0) {
                 $new_featured_id = $image_id;
-                error_log('WC_GS_Sync: Set as featured image: ' . $image_id);
+                wc_gs_log('WC_GS_Sync: Set as featured image: ' . $image_id);
             } else {
                 $new_gallery_ids[] = $image_id;
-                error_log('WC_GS_Sync: Added to gallery: ' . $image_id);
+                wc_gs_log('WC_GS_Sync: Added to gallery: ' . $image_id);
             }
         }
         
         // Update featured image
         if ($new_featured_id) {
             set_post_thumbnail($product_id, $new_featured_id);
-            error_log('WC_GS_Sync: Updated featured image to: ' . $new_featured_id);
+            wc_gs_log('WC_GS_Sync: Updated featured image to: ' . $new_featured_id);
         } else {
             // Remove featured image if none specified
             delete_post_thumbnail($product_id);
-            error_log('WC_GS_Sync: Removed featured image');
+            wc_gs_log('WC_GS_Sync: Removed featured image');
         }
         
         // Update gallery images
         update_post_meta($product_id, '_product_image_gallery', implode(',', $new_gallery_ids));
-        error_log('WC_GS_Sync: Updated gallery images: ' . implode(',', $new_gallery_ids));
+        wc_gs_log('WC_GS_Sync: Updated gallery images: ' . implode(',', $new_gallery_ids));
         
         // Clean up unused images (optional - be careful with this!)
         $this->cleanup_unused_product_images($product_id, $current_featured_id, $current_gallery_ids, $new_featured_id, $new_gallery_ids);
@@ -3573,12 +3573,12 @@ class WC_GS_Sync_Handler {
      * Upload image from URL
      */
     private function upload_image_from_url($image_url, $post_id) {
-        error_log('WC_GS_Sync: Starting image upload from URL: ' . $image_url);
+        wc_gs_log('WC_GS_Sync: Starting image upload from URL: ' . $image_url);
 
         // SSRF protection: only allow well-formed http(s) URLs that pass WP's
         // safe-URL validation (blocks localhost / internal IPs by default).
         if (!wp_http_validate_url($image_url)) {
-            error_log('WC_GS_Sync: Rejected unsafe image URL: ' . $image_url);
+            wc_gs_log('WC_GS_Sync: Rejected unsafe image URL: ' . $image_url);
             return new WP_Error('invalid_image_url', 'Image URL is not allowed');
         }
 
@@ -3596,28 +3596,28 @@ class WC_GS_Sync_Handler {
         $temp_file = download_url($image_url, $timeout);
 
         if (is_wp_error($temp_file)) {
-            error_log('WC_GS_Sync: Failed to download image (timeout ' . $timeout . 's): ' . $temp_file->get_error_message());
+            wc_gs_log('WC_GS_Sync: Failed to download image (timeout ' . $timeout . 's): ' . $temp_file->get_error_message());
             return $temp_file;
         }
         
-        error_log('WC_GS_Sync: Downloaded to temp file: ' . $temp_file);
+        wc_gs_log('WC_GS_Sync: Downloaded to temp file: ' . $temp_file);
         
         $file = array(
             'name' => basename($image_url),
             'tmp_name' => $temp_file,
         );
         
-        error_log('WC_GS_Sync: Attempting to sideload file: ' . print_r($file, true));
+        wc_gs_log('WC_GS_Sync: Attempting to sideload file: ' . print_r($file, true));
         
         $attachment_id = media_handle_sideload($file, $post_id);
         
         if (is_wp_error($attachment_id)) {
-            error_log('WC_GS_Sync: Failed to sideload image: ' . $attachment_id->get_error_message());
+            wc_gs_log('WC_GS_Sync: Failed to sideload image: ' . $attachment_id->get_error_message());
             @unlink($temp_file);
             return $attachment_id;
         }
         
-        error_log('WC_GS_Sync: Successfully uploaded image, attachment ID: ' . $attachment_id);
+        wc_gs_log('WC_GS_Sync: Successfully uploaded image, attachment ID: ' . $attachment_id);
 
         // Record the source URL so future syncs reuse this attachment instead of
         // re-downloading the same external image every time.

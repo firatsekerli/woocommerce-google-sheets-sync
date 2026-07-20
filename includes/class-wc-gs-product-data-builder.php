@@ -515,7 +515,7 @@ class WC_GS_Product_Data_Builder {
         ));
 
         if (is_wp_error($term_data)) {
-            error_log('Failed to create category: ' . $term_data->get_error_message());
+            wc_gs_log('Failed to create category: ' . $term_data->get_error_message());
             return null;
         }
 
@@ -548,7 +548,7 @@ class WC_GS_Product_Data_Builder {
         ));
 
         if (is_wp_error($term_data)) {
-            error_log('Failed to create shipping class: ' . $term_data->get_error_message());
+            wc_gs_log('Failed to create shipping class: ' . $term_data->get_error_message());
             return null;
         }
 

@@ -191,6 +191,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variations, which have no Trash, are still removed).
 
 ### Changed
+- **Debug logging is now off by default.** The plugin wrote detailed `error_log()`
+  output on every sync (per-row dumps, timing, image/attribute steps), growing the
+  log file in normal use. All logging now routes through a single `wc_gs_log()`
+  helper that writes **only** when `WP_DEBUG` is on or a new **Debug logging**
+  setting (Settings → Sync Configuration, off by default) is enabled. Filterable via
+  `wc_gs_debug_logging`. A normal production sync now writes nothing to the log.
 - **Exporting into a blank sheet now writes a complete, round-trippable template.**
   The auto-generated header row was a basic subset (no `Slug`, no image alt-text,
   only 4 gallery columns, and — critically — no `Attributes`/`Meta` markers, so

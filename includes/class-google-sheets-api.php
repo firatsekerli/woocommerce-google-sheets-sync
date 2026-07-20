@@ -110,31 +110,31 @@ class WC_GS_Google_Sheets_API {
      */
     public function handle_auth_callback($auth_code) {
         if (!$this->client) {
-            error_log('WC Google Sheets: Client not initialized');
+            wc_gs_log('WC Google Sheets: Client not initialized');
             return new WP_Error('client_error', 'Google Client not initialized');
         }
         
         try {
             // Do not log the authorization code or the token payload — they are
             // secrets that would otherwise end up in debug.log.
-            error_log('WC Google Sheets: Exchanging authorization code for tokens');
+            wc_gs_log('WC Google Sheets: Exchanging authorization code for tokens');
 
             $token = $this->client->fetchAccessTokenWithAuthCode($auth_code);
 
             if (isset($token['error'])) {
                 $description = isset($token['error_description']) ? $token['error_description'] : $token['error'];
-                error_log('WC Google Sheets: Token exchange error: ' . $description);
+                wc_gs_log('WC Google Sheets: Token exchange error: ' . $description);
                 return new WP_Error('auth_error', $description);
             }
             
             // Store the access token
             update_option('wc_gs_sync_access_token', $token);
-            error_log('WC Google Sheets: Access token saved successfully');
+            wc_gs_log('WC Google Sheets: Access token saved successfully');
             
             return true;
             
         } catch (Exception $e) {
-            error_log('WC Google Sheets: Exception during auth: ' . $e->getMessage());
+            wc_gs_log('WC Google Sheets: Exception during auth: ' . $e->getMessage());
             return new WP_Error('auth_exception', $e->getMessage());
         }
     }

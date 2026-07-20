@@ -113,6 +113,7 @@ class WC_GS_Settings {
         if (isset($input['auto_sync_interval'])) {
             $output['auto_sync_interval'] = sanitize_text_field($input['auto_sync_interval']);
         }
+        $output['debug_logging'] = !empty($input['debug_logging']);
 
         return $output;
     }

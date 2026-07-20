@@ -77,6 +77,16 @@ if (isset($_GET['message']) && $_GET['message'] === 'settings_saved') {
                     <p class="description"><?php _e('Maximum number of retry attempts for failed requests (1-10)', 'wc-google-sheets-sync'); ?></p>
                 </td>
             </tr>
+            <tr>
+                <th scope="row"><?php _e('Debug Logging', 'wc-google-sheets-sync'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="debug_logging" value="1" <?php checked(!empty($options['debug_logging'])); ?> />
+                        <?php _e('Write detailed sync logs to the PHP error log', 'wc-google-sheets-sync'); ?>
+                    </label>
+                    <p class="description"><?php _e('Off by default. Turn on only when troubleshooting — it writes a lot per sync. (Also enabled automatically when WP_DEBUG is on.)', 'wc-google-sheets-sync'); ?></p>
+                </td>
+            </tr>
         </table>
         
         <h2><?php _e('Automatic Sync', 'wc-google-sheets-sync'); ?></h2>

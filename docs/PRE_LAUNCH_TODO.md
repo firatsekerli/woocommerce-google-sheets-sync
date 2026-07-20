@@ -6,11 +6,13 @@ feature work for launch.
 
 ## Blockers / must-do before release
 
-- [ ] **Gate debug logging behind a switch.** The plugin calls `error_log()`
-      heavily on every sync (`WC_GS_Sync:` per-row `print_r`, `WC_GS_Timing:`,
-      image/attribute steps). Wrap them in one helper that only logs when
-      `WP_DEBUG` is on (or a "Debug logging" setting, off by default) so normal
-      use writes nothing and the log file doesn't grow.
+- [x] **Gate debug logging behind a switch.** All plugin `error_log()` calls now
+      route through a single `wc_gs_log()` helper that writes only when `WP_DEBUG`
+      is on **or** the new "Debug logging" setting is enabled (off by default), so a
+      normal production sync writes nothing. Filterable via `wc_gs_debug_logging`.
+      *(Minor follow-up: the `print_r()` arguments in some calls still build their
+      string even when logging is off — CPU only, no disk writes; could be made
+      lazy later.)*
 - [ ] **Bump compatibility headers.** `readme.txt` / main file say "Tested up to:
       6.5" and "WC tested up to: 8.9" — update to current WP/WooCommerce and
       re-test.
