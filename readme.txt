@@ -4,7 +4,7 @@ Tags: woocommerce, google sheets, products, sync, bulk edit
 Requires at least: 5.0
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -103,6 +103,17 @@ pipe separated values.
 Simple products.
 
 == Changelog ==
+
+= 1.3.0 =
+* Added: Full variable product support — parent + variation rows, attribute matching, orphan-variation cleanup, and variable-product export
+* Added: Multiple categories per product (pipe-separated paths) and per-attribute control via header tags ([hidden], [no-vary])
+* Added: Auto-generated variation SKUs (<parent SKU>-NN), a complete round-trippable export template, and a "Cancel Sync" button
+* Added: "Debug logging" setting (off by default) so normal syncs write nothing to the log
+* Fixed: Sheets with more than 999 products are no longer truncated
+* Fixed: Background sync now survives hosts that kill long requests (no server cron needed); slow/unreachable or image-heavy rows no longer stall or fail a sync
+* Fixed: Front-end variation and attribute-dropdown order now match the sheet
+* Fixed: A row whose SKU matches an existing product is no longer wrongly rejected as a duplicate
+* Changed: SKU and GTIN are now strictly sheet-driven (Quantity remains two-way); write-back to the sheet is much faster
 
 = 1.1.0 =
 * Added: Export all existing WooCommerce products into a connected sheet

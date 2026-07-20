@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-20
+
 ### Added
 - **Gallery images extended to 20** (was 8): `Gallery Image 01` … `Gallery Image 20`
   (each with an optional `… Alt Text` column). The count is filterable via

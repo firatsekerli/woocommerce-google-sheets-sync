@@ -16,18 +16,21 @@ feature work for launch.
 - [ ] **Bump compatibility headers.** `readme.txt` / main file say "Tested up to:
       6.5" and "WC tested up to: 8.9" — update to current WP/WooCommerce and
       re-test.
-- [ ] **Reconcile plugin metadata.** Plugin URI / Author URI point to
-      `ultimatesubscriptions.com` while `composer.json` author is
-      `wapiti-digital`. Pick the correct branding before launch.
+- [x] **Reconcile plugin metadata.** Branding settled: **Author = Wapiti Digital**
+      (`Author URI: https://wapiti.digital/`), **Plugin URI = ultimatesubscriptions.com**
+      (the sales page). `composer.json` already matched (Wapiti Digital /
+      wapiti.digital).
 - [x] **"Get Template Google Sheet" button** now points at the real template
       (`WC_GS_SYNC_TEMPLATE_URL`, the `/copy` link) and is shown on the add-sheet
       screen, configure screen, and Help tab.
-- [ ] **Decide on the unused `wc_gs_sync_logs` table.** It's created on activation
-      but never used (the logger was removed). Either build a sync-history view on
-      it or stop creating it.
-- [ ] **Finalize the release.** Move `CHANGELOG.md [Unreleased]` to a version,
-      set `readme.txt` Stable tag to match the plugin header (currently 1.2.0),
-      and tag the release.
+- [x] **Decide on the unused `wc_gs_sync_logs` table.** Decision: stop creating it.
+      The activation routine no longer creates the table and now drops any legacy
+      copy (`cleanup_legacy_tables()`); `uninstall.php` still drops it too.
+- [~] **Finalize the release.** Version set to **1.3.0** (main header +
+      `WC_GS_SYNC_VERSION`), `readme.txt` Stable tag → 1.3.0 with a 1.3.0 changelog
+      entry, and `CHANGELOG.md [Unreleased]` moved to **[1.3.0] - 2026-07-20**.
+      Remaining: bump the compatibility headers (below) and tag the release at
+      merge time.
 - [ ] **Independent security review.** A code-level pass + base-code audit was
       done and fixes applied, but a commercial release should get an external
       review (e.g., Patchstack/WPScan) before sale.

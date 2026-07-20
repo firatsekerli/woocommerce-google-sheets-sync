@@ -3,9 +3,9 @@
  * Plugin Name: WooCommerce Google Sheets Sync
  * Plugin URI: https://ultimatesubscriptions.com/
  * Description: Sync WooCommerce products with Google Sheets for easy bulk product management and updates.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: Wapiti Digital
- * Author URI: https://ultimatesubscriptions.com/
+ * Author URI: https://wapiti.digital/
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: wc-google-sheets-sync
@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('WC_GS_SYNC_VERSION', '1.2.0');
+define('WC_GS_SYNC_VERSION', '1.3.0');
 define('WC_GS_SYNC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WC_GS_SYNC_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('WC_GS_SYNC_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -187,9 +187,9 @@ class WC_Google_Sheets_Sync {
             wp_die(__('This plugin requires WooCommerce to be installed and active.', 'wc-google-sheets-sync'));
         }
         
-        // Create database tables if needed
-        $this->create_tables();
-        
+        // Drop the legacy, unused sync-logs table if a prior version created it
+        $this->cleanup_legacy_tables();
+
         // Set default options
         $this->set_default_options();
         
@@ -209,37 +209,16 @@ class WC_Google_Sheets_Sync {
     }
     
     /**
-     * Create database tables
+     * Remove the legacy sync-logs table. Earlier versions created a
+     * `wc_gs_sync_logs` table on activation but never wrote to it (the DB logger
+     * was removed). The plugin no longer creates it; drop it if a prior version
+     * left one behind, and clear its stored DB version.
      */
-    private function create_tables() {
+    private function cleanup_legacy_tables() {
         global $wpdb;
-        
-        $charset_collate = $wpdb->get_charset_collate();
-        
-        // Table for sync logs
         $table_name = $wpdb->prefix . 'wc_gs_sync_logs';
-        
-        $sql = "CREATE TABLE $table_name (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            sheet_id varchar(255) NOT NULL,
-            sync_type varchar(50) NOT NULL,
-            status varchar(50) NOT NULL,
-            products_processed int(11) DEFAULT 0,
-            products_success int(11) DEFAULT 0,
-            products_failed int(11) DEFAULT 0,
-            error_message text,
-            started_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
-            completed_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
-            PRIMARY KEY (id),
-            KEY sheet_id (sheet_id),
-            KEY status (status)
-        ) $charset_collate;";
-        
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        dbDelta($sql);
-        
-        // Store database version
-        add_option('wc_gs_sync_db_version', '1.0');
+        $wpdb->query("DROP TABLE IF EXISTS {$table_name}");
+        delete_option('wc_gs_sync_db_version');
     }
     
     /**
