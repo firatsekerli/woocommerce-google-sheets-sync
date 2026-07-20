@@ -451,7 +451,9 @@ class WC_GS_Sync_Handler {
             wp_send_json_error('Insufficient permissions');
         }
 
-        $sync_id = isset($_GET['sync_id']) ? sanitize_text_field(wp_unslash($_GET['sync_id'])) : '';
+        // sanitize_key constrains the id to [a-z0-9_-] so it can't be used to
+        // craft arbitrary option/transient names when concatenated below.
+        $sync_id = isset($_GET['sync_id']) ? sanitize_key(wp_unslash($_GET['sync_id'])) : '';
         if (empty($sync_id)) {
             wp_send_json_error('Invalid sync ID');
         }
@@ -540,7 +542,9 @@ class WC_GS_Sync_Handler {
             wp_send_json_error('Insufficient permissions');
         }
 
-        $sync_id = isset($_POST['sync_id']) ? sanitize_text_field(wp_unslash($_POST['sync_id'])) : '';
+        // sanitize_key constrains the id to [a-z0-9_-] so it can't be used to
+        // craft arbitrary option/transient names when concatenated below.
+        $sync_id = isset($_POST['sync_id']) ? sanitize_key(wp_unslash($_POST['sync_id'])) : '';
 
         // Cancel any queued background batches for this plugin's sync group
         // (empty args array matches the action regardless of sync_id/offset).

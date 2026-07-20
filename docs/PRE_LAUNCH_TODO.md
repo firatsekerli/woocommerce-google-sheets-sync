@@ -13,9 +13,9 @@ feature work for launch.
       *(Minor follow-up: the `print_r()` arguments in some calls still build their
       string even when logging is off — CPU only, no disk writes; could be made
       lazy later.)*
-- [ ] **Bump compatibility headers.** `readme.txt` / main file say "Tested up to:
-      6.5" and "WC tested up to: 8.9" — update to current WP/WooCommerce and
-      re-test.
+- [x] **Bump compatibility headers.** Bumped to "Tested up to: 6.8" / "WC tested up
+      to: 9.8" in the main file and `readme.txt`. *(Set to recent stable versions;
+      confirm/raise to the exact current WP/WooCommerce you've tested on.)*
 - [x] **Reconcile plugin metadata.** Branding settled: **Author = Wapiti Digital**
       (`Author URI: https://wapiti.digital/`), **Plugin URI = ultimatesubscriptions.com**
       (the sales page). `composer.json` already matched (Wapiti Digital /
@@ -31,9 +31,17 @@ feature work for launch.
       entry, and `CHANGELOG.md [Unreleased]` moved to **[1.3.0] - 2026-07-20**.
       Remaining: bump the compatibility headers (below) and tag the release at
       merge time.
-- [ ] **Independent security review.** A code-level pass + base-code audit was
-      done and fixes applied, but a commercial release should get an external
-      review (e.g., Patchstack/WPScan) before sale.
+- [~] **Independent security review.** A full-plugin code pass was run: all AJAX /
+      admin actions are nonce- + capability-gated with sanitized input and safe
+      redirects; OAuth callback is CSRF-protected (state nonce); all SQL uses
+      `$wpdb->prepare`; output is escaped (stats are int-cast); image download is
+      SSRF-guarded (`wp_http_validate_url`) and time-capped; no anonymous
+      (`nopriv`) endpoints; tokens/secrets are never logged. **No high/medium
+      issues found.** Low/hardening: (1) constrained the client-supplied `sync_id`
+      to a safe key in the progress/cancel handlers [done]; (2) secrets/token are
+      stored plaintext in options — consider encryption-at-rest (below). A
+      commercial release should still get an **external** review (Patchstack/WPScan)
+      before sale.
 
 ## Features (paid tier / roadmap)
 
